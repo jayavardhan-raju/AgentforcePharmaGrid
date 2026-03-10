@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Cold_Chain_Required__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>Indicates if this medication requires cold chain handling</description>
+    <label>Cold Chain Required</label>
+    <trackTrending>false</trackTrending>
+    <type>Checkbox</type>
+</CustomField>

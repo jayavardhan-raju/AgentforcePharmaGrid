@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Cold_Chain_Capable__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>Indicates if the store can handle cold chain medications</description>
+    <label>Cold Chain Capable</label>
+    <trackTrending>false</trackTrending>
+    <type>Checkbox</type>
+</CustomField>

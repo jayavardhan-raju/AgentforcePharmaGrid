@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Inventory_Position__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>Target inventory position for which this transfer was evaluated</description>
+    <label>Inventory Position</label>
+    <referenceTo>Inventory_Position__c</referenceTo>
+    <relationshipLabel>Transfer Logs</relationshipLabel>
+    <relationshipName>Inventory_Position_Transfer_Logs</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status_Color__c</fullName>
+    <description>Color code string representing status category</description>
+    <externalId>false</externalId>
+    <formula>CASE(
+    Status__c,
+    &quot;OUT_OF_STOCK&quot;,&quot;RED&quot;,
+    &quot;LOW&quot;,&quot;ORANGE&quot;,
+    &quot;HEALTHY&quot;,&quot;GREEN&quot;,
+    &quot;UNKNOWN&quot;,&quot;GRAY&quot;,
+    &quot;GRAY&quot;
+)</formula>
+    <label>Status Color</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

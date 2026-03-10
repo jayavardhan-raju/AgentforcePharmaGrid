@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status__c</fullName>
+    <description>Computed status text based on quantity vs safety stock and expiry</description>
+    <externalId>false</externalId>
+    <formula>IF(
+    ISBLANK(Safety_Stock__c),
+    &quot;UNKNOWN&quot;,
+    IF(
+        Quantity__c &lt;= 0,
+        &quot;OUT_OF_STOCK&quot;,
+        IF(
+            Quantity__c &lt; Safety_Stock__c,
+            &quot;LOW&quot;,
+            &quot;HEALTHY&quot;
+        )
+    )
+)</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <label>Status</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

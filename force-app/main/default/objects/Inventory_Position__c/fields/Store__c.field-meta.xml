@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Store__c</fullName>
+    <deleteConstraint>Restrict</deleteConstraint>
+    <description>Reference to the Pharmacy Store</description>
+    <label>Store</label>
+    <referenceTo>Pharmacy_Store__c</referenceTo>
+    <relationshipLabel>Inventory Positions</relationshipLabel>
+    <relationshipName>Inventory_Positions</relationshipName>
+    <required>true</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Source_Store__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>Source Pharmacy Store for the transfer</description>
+    <label>Source Store</label>
+    <referenceTo>Pharmacy_Store__c</referenceTo>
+    <relationshipLabel>Source Transfer Logs</relationshipLabel>
+    <relationshipName>Source_Transfer_Logs</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>
