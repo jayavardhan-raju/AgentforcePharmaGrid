@@ -1,178 +1,136 @@
 ---
 layout: default
-title: Deployment Guide
+title: Deployment
 parent: Setup
 nav_order: 1
 ---
 
 # Deployment Guide
 
-Step-by-step instructions for deploying AgentforceGrid to a Salesforce org.
+How to deploy AgentforcePharmaGrid to a scratch org, sandbox, or production org.
 
 ---
 
 ## Prerequisites
 
-| Requirement | Details |
-|-------------|---------|
-| **Salesforce Org** | Must have Agentforce enabled with API version 65.0 or higher |
-| **Salesforce CLI** | `sf` CLI installed ([Install Guide](https://developer.salesforce.com/tools/salesforcecli)) |
-| **Dev Hub** | Required for scratch org deployments. Enable in Setup → Dev Hub |
-| **Source Tracking** | The project uses SFDX source format (`force-app/main/default/`) |
+- **Salesforce CLI** (`sf`) installed and authenticated. See https://developer.salesforce.com/tools/sfdxcli for install instructions.
+- **A target org with Agentforce enabled.** The `IST_Inventory_Recommendation` prompt template requires the `AiPrompt` SObject. If Agentforce is not enabled, the prompt template won't deploy and `PostInstallScript.verifyPromptTemplate()` will log an info-level message rather than fail.
+- **API v65.0** or later. The project's source uses v65 features; older orgs may need an API upgrade in `sfdx-project.json`.
+- **A user with permission to deploy custom objects, Apex, Flows, and Prompt Templates.** A System Administrator profile is sufficient.
 
 ---
 
-## Deploy to a Scratch Org
+## Deploy to a scratch org
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/jayavardhan-raju/AgentforceGrid.git
-cd AgentforceGrid
+# 1. Create a scratch org with Agentforce enabled
+sf org create scratch --definition-file config/project-scratch-def.json --alias ist-dev --duration-days 7
 
-# 2. Create a scratch org (requires Dev Hub authorization)
-sf org create scratch \
-  -f config/project-scratch-def.json \
-  -a AgentforceGrid \
-  -d 30
+# 2. Push source
+sf project deploy start --source-dir force-app --target-org ist-dev
 
-# 3. Deploy all metadata
-sf project deploy start -o AgentforceGrid
+# 3. Assign the permission set
+sf org assign permset --name IST_Ops_User --target-org ist-dev
 
-# 4. Assign the permission set to the default user
-sf org assign permset -n IST_Ops_User -o AgentforceGrid
+# 4. Open the org
+sf org open --target-org ist-dev
+```
 
-# 5. Open the org
-sf org open -o AgentforceGrid
+> The scratch org definition file is not in the uploaded `force-app/` archive — you'll need to add `config/project-scratch-def.json` with the `Agentforce` and `EinsteinAI` features enabled before step 1 works.
+
+---
+
+## Deploy to a sandbox
+
+```bash
+# 1. Authenticate
+sf org login web --instance-url https://test.salesforce.com --alias ist-sandbox
+
+# 2. Validate (check-only deploy) first
+sf project deploy validate --source-dir force-app --target-org ist-sandbox --test-level RunLocalTests
+
+# 3. If validation passes, deploy
+sf project deploy start --source-dir force-app --target-org ist-sandbox --test-level RunLocalTests
+
+# 4. Assign the permission set
+sf org assign permset --name IST_Ops_User --target-org ist-sandbox
+```
+
+> **Heads up:** `--test-level RunLocalTests` will fail today because no test class exists. Either use `--test-level NoTestRun` for sandbox (not allowed for production) or author a test class first. See [Testing Guide](testing.html).
+
+---
+
+## Deploy to production
+
+Production deploys require a `RunLocalTests` (or `RunSpecifiedTests`) test level *and* ≥75% coverage across the affected classes. Until a test class is added, the production deploy will fail.
+
+When the test class is in place:
+
+```bash
+# 1. Authenticate
+sf org login web --alias ist-prod
+
+# 2. Validate
+sf project deploy validate --source-dir force-app --target-org ist-prod --test-level RunLocalTests
+
+# 3. Quick-deploy after a clean validation (within 10 days)
+sf project deploy quick --job-id <validation-job-id> --target-org ist-prod
 ```
 
 ---
 
-## Deploy to a Sandbox or Production
+## Post-deploy steps
 
-```bash
-# 1. Authenticate to your target org
-sf org login web -a MyTargetOrg
+These steps configure the Agentforce Grid and verify the prompt template. If you installed via a managed package, `PostInstallScript.onInstall()` handles steps 1, 2, 4, and 5 automatically.
 
-# 2. Deploy the source
-sf project deploy start \
-  --target-org MyTargetOrg \
-  --source-dir force-app
+1. **Verify the prompt template.** Setup → Prompt Builder → look for **IST Inventory Recommendation** with `activeVersion = 1` and status `Published`.
+2. **Activate the Flow.** Setup → Flows → `Execute_Inter_Store_Transfer` → Activate (if not already active per the source `<status>Active</status>`).
+3. **Add the Grid to the record page.**
+   - Open the `Inventory_Position_Record_Page` Lightning record page in App Builder.
+   - Add an **Agentforce Grid** component.
+   - Bind the Grid to the `Inventory_Transfer_Ops` list view.
+   - Bind the Recommendation column to the `IST_Inventory_Recommendation` prompt template (display field: `Recommendation_Preview__c`).
+   - Add a per-row action button labelled **Transfer/Optimize**, type **Flow**, target `Execute_Inter_Store_Transfer`, with input mapping `inventoryPositionId ← {Salesforce.Id}`.
+4. **Assign the `IST_Ops_User` permission set** to ops users:
 
-# 3. Assign the permission set to operations users
-sf org assign permset \
-  -n IST_Ops_User \
-  -o MyTargetOrg
+   ```bash
+   sf org assign permset --name IST_Ops_User --on-behalf-of ops-user@example.com --target-org ist-prod
+   ```
 
-# 4. (Optional) Validate without deploying — check-only deployment
-sf project deploy start \
-  --target-org MyTargetOrg \
-  --source-dir force-app \
-  --dry-run \
-  --test-level RunLocalTests
-```
+5. **(Optional) Seed demo data** — see [scripts/DEMO_PLAYBOOK.md](https://github.com/jayavardhan-raju/AgentforcePharmaGrid/blob/main/scripts/DEMO_PLAYBOOK.md) for re-runnable anonymous Apex scripts that create realistic data for the four scenarios (happy path, Schedule II block, distributor fallback, near-expiry exclusion).
 
 ---
 
-## Post-Deployment Configuration
+## Verifying the deploy
 
-After deploying the metadata, the following manual steps are required:
-
-### 1. Verify Permission Set Assignment
-
-Assign `IST_Ops_User` to all users who will operate the Agentforce Grid. This permission set grants:
-
-| Object | Create | Read | Edit | Delete |
-|--------|--------|------|------|--------|
-| `Inventory_Position__c` | Yes | Yes | Yes | Yes |
-| `Medication__c` | Yes | Yes | Yes | Yes |
-| `Pharmacy_Store__c` | Yes | Yes | Yes | Yes |
-| `Transfer_Log__c` | Yes | Yes | No | No |
-
-Note: `Transfer_Log__c` is intentionally restricted to Create + Read only to preserve audit trail immutability.
-
-### 2. Activate the Flow
-
-1. Navigate to **Setup → Flows**
-2. Find `Execute Inter Store Transfer`
-3. Verify its status is **Active**
-4. If not active, open the flow and click **Activate**
-
-### 3. Configure the Agentforce Grid
-
-1. Navigate to the `Inventory_Position__c` tab
-2. Set up an Agentforce Grid component on the page
-3. Configure it to use the `Inventory Transfer Ops` list view
-4. Map the Grid action button to the `Execute Inter-Store Transfer` invocable action
-5. Ensure the Grid columns include `Recommendation_Preview__c` for transfer status visibility
-
-### 4. Load Sample Data (3 Apex Scripts)
-
-The project includes 3 Apex anonymous scripts that load a complete demo dataset. **Run them in order** — each script depends on the records created by the previous one.
+Quick smoke checks:
 
 ```bash
-# Script 1: Create 6 Pharmacy Stores (2 districts, varied capabilities)
-sf apex run --file scripts/data/1_Create_Pharmacy_Stores.apex --target-org <your-org-alias>
+# All four custom objects present
+sf data query --query "SELECT QualifiedApiName FROM EntityDefinition WHERE QualifiedApiName IN ('Pharmacy_Store__c','Medication__c','Inventory_Position__c','Transfer_Log__c')" --target-org ist-dev
 
-# Script 2: Create 6 Medications (Schedule II, cold-chain, standard)
-sf apex run --file scripts/data/2_Create_Medications.apex --target-org <your-org-alias>
+# Apex classes deployed
+sf data query --query "SELECT Name FROM ApexClass WHERE Name IN ('InterStoreTransferService','InterStoreTransferAction','InventoryPositionSelector','PostInstallScript','ISTTestDataFactory')" --target-org ist-dev
 
-# Script 3: Create 16 Inventory Positions (6 demo scenarios)
-sf apex run --file scripts/data/3_Create_Inventory_Positions.apex --target-org <your-org-alias>
+# Flow active
+sf data query --query "SELECT Status FROM FlowDefinitionView WHERE ApiName = 'Execute_Inter_Store_Transfer'" --target-org ist-dev
 ```
 
-#### What the scripts create
+Then run a demo script:
 
-**Script 1 — Pharmacy Stores** creates 6 stores across 2 districts with varied configurations to exercise all source selection filter paths:
+```bash
+sf apex run --file scripts/apex/TC1_HappyPath_ColdChainTransfer.apex --target-org ist-dev
+```
 
-| Store | District | Cold Chain | DEA Reg | Active | Purpose |
-|-------|----------|-----------|---------|--------|---------|
-| CVS Downtown SF | District 1 - Bay Area | Yes | Yes | Yes | Primary target store for demo scenarios |
-| CVS Westside SF | District 1 - Bay Area | Yes | Yes | Yes | Primary source store (cold-chain capable) |
-| CVS Eastside Oakland | District 1 - Bay Area | No | Yes | Yes | Filtered out for cold-chain medications |
-| CVS San Jose Central | District 2 - South Bay | Yes | Yes | Yes | Source for Schedule IV and multi-source demos |
-| CVS Sunnyvale | District 2 - South Bay | Yes | No | Yes | No DEA registration — filtered out as source |
-| CVS Palo Alto (Closed) | District 2 - South Bay | Yes | Yes | No | Inactive — excluded by SOQL WHERE clause |
+The script's final `System.debug` line includes a Lightning record-page URL — paste it into the browser to see the Agentforce Grid populated with the seeded data.
 
-**Script 2 — Medications** creates 6 medications covering all DEA schedules and handling requirements:
+---
 
-| Medication | DEA Schedule | Cold Chain | Purpose |
-|-----------|-------------|-----------|---------|
-| Mounjaro 5mg | None | Yes | Happy path with cold-chain validation |
-| Ozempic 1mg | None | Yes | Near-expiry source exclusion scenario |
-| Adderall XR 30mg | II | No | Schedule II compliance hard stop |
-| Xanax 0.5mg | IV | No | Allowed controlled substance transfer |
-| Lisinopril 10mg | None | No | No suitable source (distributor fallback) |
-| Amoxicillin 500mg | None | No | Multiple eligible sources scenario |
+## Common deploy issues
 
-**Script 3 — Inventory Positions** creates 16 positions across 6 demo scenarios:
-
-| # | Scenario | Target Store (Trigger Row) | Expected Outcome |
-|---|----------|--------------------------|------------------|
-| 1 | **Happy Path** | CVS Downtown SF — Mounjaro 5mg (Qty: 0) | Transfer from CVS Westside SF; CVS Eastside Oakland filtered out (no cold chain) |
-| 2 | **Schedule II Block** | CVS Downtown SF — Adderall XR 30mg (Qty: 5) | Hard compliance stop, `Transfer_Log__c` with `Blocked` status |
-| 3 | **No Source Fallback** | CVS Downtown SF — Lisinopril 10mg (Qty: 0) | Distributor order recommendation (no store has surplus) |
-| 4 | **Expiry Exclusion** | CVS San Jose Central — Ozempic 1mg (Qty: 5) | CVS Downtown SF excluded (15-day expiry); CVS Westside SF selected (120-day expiry) |
-| 5 | **Schedule IV Allowed** | CVS Eastside Oakland — Xanax 0.5mg (Qty: 10) | Transfer from CVS San Jose Central (Schedule IV is not blocked) |
-| 6 | **Multiple Sources** | CVS Sunnyvale — Amoxicillin 500mg (Qty: 0) | CVS Downtown SF selected (300 units > 120 units at CVS San Jose Central) |
-
-#### Customizing for production
-
-The scripts above load demo data. For production deployments, replace the script contents with your actual store, medication, and inventory data, or load data via Data Loader / Data Import Wizard. The key requirements are:
-
-- Every `Pharmacy_Store__c` must have `Is_Active__c = true` and a non-blank `DEA_Registration__c` to be eligible as a transfer source
-- Every `Medication__c` must have a unique `NDC__c` value
-- `Inventory_Position__c` records need both `Quantity__c` and `Safety_Stock__c` populated for the status formula to compute correctly
-
-### 5. Verify the Workflow
-
-Test the end-to-end workflow using the demo data:
-
-1. Open the Agentforce Grid on the `Inventory_Position__c` object with the `Inventory Transfer Ops` list view
-2. Find the **Mounjaro 5mg at CVS Downtown SF** row (Qty: 0, Status: OUT_OF_STOCK)
-3. Click the Transfer/Optimize action button on that row
-4. Verify the dry-run recommendation appears — it should recommend CVS Westside SF as the source
-5. Confirm the transfer via the agent conversation
-6. Verify a `Transfer_Log__c` record was created with `Transfer_Status__c = 'Completed'`
-7. Verify the source and target inventory quantities were updated
-8. Test the **Adderall XR 30mg** row to verify the Schedule II compliance block
-9. Test the **Lisinopril 10mg** row to verify the distributor fallback message
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| Prompt template fails to deploy | Agentforce not enabled in target org | Enable Agentforce + Einstein in Setup, then redeploy `force-app/main/default/prompts/` |
+| Flow deploy fails on `actionName = InterStoreTransferAction` | Apex class not yet deployed when Flow validates | Deploy in order: classes first, then flows. Source-format `sf project deploy start` handles this automatically; manifest deploys may need `--ignore-conflicts` and a second pass |
+| Permission set assignment skipped | User already has it | `assignPermissionSet()` queries `PermissionSetAssignment` and skips on duplicate; this is intentional |
+| `Recommendation_Preview__c` shows blank in Grid after click | Field-level security not granted on the field for the running user | Confirm the user is on `IST_Ops_User` permset; check `Schema.sObjectType.Inventory_Position__c.fields.Recommendation_Preview__c.isUpdateable()` returns true for that user |

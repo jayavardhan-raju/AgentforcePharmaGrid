@@ -3,99 +3,124 @@ layout: default
 title: Architecture Overview
 parent: Architecture
 nav_order: 1
+has_children: false
 ---
 
 # Architecture Overview
 
-AgentforceGrid follows a clean **Action → Service → Selector** layered architecture with no triggers. Each layer has a single responsibility, and dependencies flow strictly downward.
+AgentforcePharmaGrid follows a strict **Service / Selector / Invocable Action** pattern. There are no triggers, no batch jobs, no LWCs, and no callouts. Every action is initiated synchronously from the Agentforce Grid's per-row button.
 
 ---
 
-## Layer Diagram
+## Layered Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      AGENTFORCE GRID UI                         │
-│              (Inventory_Position__c List View)                   │
-│         Ops user clicks "Transfer/Optimize" on a row            │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              Execute_Inter_Store_Transfer (Flow)                 │
-│         AutoLaunchedFlow — passes inventoryPositionId            │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│           InterStoreTransferAction (Invocable Action)            │
-│   @InvocableMethod — thin adapter, maps ActionInput/Output       │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│           InterStoreTransferService (Service Layer)              │
-│   Core business logic: compliance, selection, execution          │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│           InventoryPositionSelector (Selector Layer)             │
-│   Read-only SOQL with USER_MODE enforcement                      │
-└─────────────────────────────────────────────────────────────────┘
++-----------------------------------------------------------------+
+|  AGENTFORCE GRID  (record page on Inventory_Position__c)        |
+|                                                                  |
+|   +---------------+   +-------------+   +----------------+       |
+|   | Status / qty  |   | Recommen-   |   | Transfer/      |       |
+|   | columns       |   | dation col  |   | Optimize btn   |       |
+|   +-------+-------+   +------+------+   +--------+-------+       |
++-----------+------------------|--------------------|--------------+
+            |                  |                    |
+       (read SOQL)       (per-row prompt)    (button click)
+            |                  |                    |
+            |                  v                    v
+            |       +-------------------+  +---------------------+
+            |       | IST_Inventory_    |  | Execute_Inter_      |
+            |       | Recommendation    |  | Store_Transfer Flow |
+            |       | (Prompt Template) |  +----------+----------+
+            |       +-------------------+             |
+            |                                         v
+            |                          +--------------------------+
+            |                          | InterStoreTransferAction |
+            |                          | @InvocableMethod         |
+            |                          +-------------+------------+
+            |                                        |
+            v                                        v
+   +-----------------+              +-------------------------------+
+   | Inventory_      |              |  InterStoreTransferService    |
+   | Position__c     |              |  (all business rules)         |
+   +-----------------+              +---+----------------+----------+
+                                        |                |
+                              (SOQL via)|                |(DML inside savepoint)
+                                        v                v
+                          +-------------------+  +-----------------+
+                          | InventoryPosition |  | Inventory_      |
+                          | Selector          |  | Position__c     |
+                          +-------------------+  | Transfer_Log__c |
+                                                 +-----------------+
 ```
 
----
-
-## Layer Responsibilities
-
-| Layer | Class | Responsibility |
-|-------|-------|----------------|
-| **Flow** | `Execute_Inter_Store_Transfer` | Agentforce entry point. Receives `inventoryPositionId` and `confirm` as input variables, invokes the Apex action, and sets `refreshView = true` to refresh the Grid after completion. |
-| **Action** | `InterStoreTransferAction` | `@InvocableMethod` adapter. Defines `ActionInput` and `ActionOutput` inner classes with `@InvocableVariable` annotations for Agentforce. Iterates over inputs (always a list of 1 for single-row actions), delegates each to `InterStoreTransferService.evaluate()`, and maps the `TransferResult` to `ActionOutput`. Contains zero business logic. |
-| **Service** | `InterStoreTransferService` | All business logic. Performs DEA Schedule II compliance gate, finds and filters source store candidates, calculates transfer quantities, writes dry-run recommendations to `Recommendation__c` and `Recommendation_Preview__c`, executes atomic transfers with `Database.setSavepoint()`, writes `Transfer_Log__c` audit records, and enforces CRUD/FLS. |
-| **Selector** | `InventoryPositionSelector` | All SOQL queries. `getById()` fetches a single inventory position with full relational context (Store + Medication fields). `findSurplusSources()` finds candidate source stores sorted by quantity descending, filtered to active stores with surplus above the target's safety stock. All queries use `WITH USER_MODE`. |
+| Layer | Asset | Responsibility |
+|---|---|---|
+| UI | Agentforce Grid | Renders rows; binds prompt template + button |
+| AI | `IST_Inventory_Recommendation` | Generates per-row recommendation text (≤150 chars) |
+| Orchestration | `Execute_Inter_Store_Transfer` Flow | Bridges Grid button click → Apex invocable |
+| Action | `InterStoreTransferAction` | Wraps service call as `@InvocableMethod` for Flow/Agent |
+| Service | `InterStoreTransferService` | Compliance gate, source selection, qty math, atomic DML |
+| Selector | `InventoryPositionSelector` | All SOQL; no DML; no business logic |
+| Data | `Pharmacy_Store__c`, `Medication__c`, `Inventory_Position__c`, `Transfer_Log__c` | Domain model + audit |
 
 ---
 
 ## End-to-End Data Flow
 
-### Step 1: Dry-Run (confirm = false)
+### Recommendation generation (every row, every time the Grid renders)
 
-1. Ops user clicks "Transfer/Optimize" on a critical row in the Agentforce Grid
-2. `Execute_Inter_Store_Transfer` flow fires with the row's `inventoryPositionId`
-3. `InterStoreTransferAction.execute()` receives the input, sets `confirm = false`
-4. `InterStoreTransferService.evaluate()` loads the target inventory position via `InventoryPositionSelector.getById()`
-5. **Compliance gate**: If `Medication__r.DEA_Schedule__c == 'II'`, a hard stop is returned with a compliance block audit log — no source search occurs
-6. `InventoryPositionSelector.findSurplusSources()` queries for all candidate source stores with surplus
-7. `selectBestSource()` filters candidates by cold-chain capability, DEA registration, and expiry threshold (≥ 30 days)
-8. `calculateTransferQty()` computes 50% of source surplus, capped at target need
-9. `buildRecommendation()` writes the full recommendation to `Recommendation__c` (Long Text Area) and a truncated version to `Recommendation_Preview__c` (Text 255 for Grid display)
-10. The agent surfaces `uhText` in the conversation: "Transfer Recommendation for [med] at [store]... Shall I proceed?"
+1. Grid renders rows from `Inventory_Position__c`.
+2. For each row, the Grid renders the **Recommendation column** by calling the `IST_Inventory_Recommendation` prompt template with the row record's merge fields.
+3. The prompt template's hard-coded rules return one of: Schedule II message, critical-stock message, healthy message, or expiry-prefixed variant. Output is plain text, ≤150 chars.
 
-### Step 2: Execution (confirm = true)
+> The prompt template output is **not** persisted to `Recommendation__c`. It's rendered live each time. `Recommendation__c` and `Recommendation_Preview__c` are only written by `InterStoreTransferService.buildRecommendation()` after the Transfer/Optimize button is clicked.
 
-1. Ops user confirms via the agent conversation
-2. Same flow fires with `confirm = true`
-3. `InterStoreTransferService.evaluate()` re-evaluates the same position (re-checks compliance, re-selects source)
-4. `executeTransfer()` sets a `Database.setSavepoint()`
-5. Source `Inventory_Position__c.Quantity__c` is decremented
-6. Target `Inventory_Position__c.Quantity__c` is incremented
-7. `Recommendation_Preview__c` is updated with completion status
-8. `Security.stripInaccessible()` is applied to the update list
-9. An immutable `Transfer_Log__c` record is inserted with status `'Completed'`
-10. On any exception, `Database.rollback(sp)` ensures zero partial updates
-11. The agent surfaces: "Transfer Executed Successfully... Audit trail recorded."
+### Transfer evaluation and execution (button click)
+
+1. User clicks **Transfer/Optimize** on a Grid row.
+2. The Grid invokes `Execute_Inter_Store_Transfer` Flow with input `inventoryPositionId = {Salesforce.Id}` and `confirm = false`.
+3. Flow calls `InterStoreTransferAction.execute(List<ActionInput>)`.
+4. The action calls `InterStoreTransferService.evaluate(inventoryPositionId, confirm=false)`.
+5. Service path:
+   - **Load** target position via `InventoryPositionSelector.getById()` (one SOQL).
+   - **Compliance gate**: if `Medication__r.DEA_Schedule__c == 'II'` → write `Blocked` Transfer Log, return DEA Form 222 message. **Stop.**
+   - **Find candidates** via `InventoryPositionSelector.findSurplusSources()`, ordered by `Quantity__c DESC`.
+   - **Filter** via `selectBestSource()`: cold-chain, DEA registration present, ≥30 days to expiry.
+   - **No source** → return distributor-fallback `uhText`. **Stop.**
+   - **Calculate qty** via `calculateTransferQty()`.
+   - **Dry-run path** (`confirm=false`): write `Recommendation__c` + `Recommendation_Preview__c`, return `uhText` ending in *"Shall I proceed with this transfer?"*.
+6. Agent surfaces the dry-run text. User confirms. The agent calls the same action with `confirm = true`.
+7. Service `executeTransfer()` path:
+   - `Database.setSavepoint()`
+   - CRUD/FLS gate (`Schema.sObjectType.X.isUpdateable()` / `isCreateable()`)
+   - Build source-deduct + target-add update records
+   - Build `Transfer_Log__c` with status `Completed`
+   - `Security.stripInaccessible(AccessType.UPDATABLE, ...)` then `update`
+   - `insert` the log
+   - On any exception: `Database.rollback(sp)` and return rollback message
+8. Action wraps the `TransferResult` in `ActionOutput` and returns to the Flow / Agent.
 
 ---
 
 ## Security Model
 
-| Mechanism | Implementation |
-|-----------|---------------|
-| **Sharing** | All Apex classes declare `with sharing` — record-level access is enforced by the running user's sharing rules |
-| **SOQL Security** | All queries use `WITH USER_MODE` — the query respects the user's CRUD and FLS permissions |
-| **CRUD Checks** | `Schema.sObjectType.Inventory_Position__c.isUpdateable()` and `Schema.sObjectType.Transfer_Log__c.isCreateable()` are verified before DML |
-| **FLS Enforcement** | `Security.stripInaccessible(AccessType.UPDATABLE, ...)` strips fields the user cannot edit before inventory position updates |
-| **Audit Immutability** | The `IST_Ops_User` permission set grants only Create + Read on `Transfer_Log__c` — no Edit or Delete — making the audit trail tamper-proof at the permission level |
-| **Compliance Logging** | Even denied Schedule II requests write a `Transfer_Log__c` with `Transfer_Status__c = 'Blocked'` for DEA audit trail |
+| Layer | Mechanism |
+|---|---|
+| Sharing | All Apex classes declared `with sharing` |
+| SOQL | `WITH SECURITY_ENFORCED` on every query in `InventoryPositionSelector` |
+| CRUD | `Schema.sObjectType.X.isUpdateable()` / `isCreateable()` checked before DML in `executeTransfer()` and `logComplianceBlock()` |
+| FLS | `Security.stripInaccessible(AccessType.UPDATABLE, ...)` applied to update records before DML |
+| Permissions | `IST_Ops_User` permission set grants object access; `Transfer_Log__c` is **create + read only** (no edit, no delete) for audit immutability |
+| Atomic DML | `Database.setSavepoint()` / `Database.rollback()` on any exception in `executeTransfer()` |
+
+---
+
+## Compliance & Audit
+
+`Transfer_Log__c` is the system of record for all transfer activity, including denied requests:
+
+- **`Completed`** — written by `executeTransfer()` after a successful transfer, with `Source_Store__c`, `Target_Store__c`, `Medication__c`, `Inventory_Position__c`, `Quantity_Transferred__c`, `Transfer_Date__c`, and a detailed `Notes__c` string.
+- **`Blocked`** — written by `logComplianceBlock()` when a Schedule II request is intercepted. `Source_Store__c` is null (no source was searched), `Quantity_Transferred__c = 0`, and `Notes__c` contains the DEA Form 222 reason.
+- **`Pending`** — the picklist default. Not written by current code paths but available for future workflows.
+
+Because the permission set denies edit and delete on `Transfer_Log__c`, audit records are effectively immutable for ops users.

@@ -1,112 +1,160 @@
 ---
 layout: default
-title: Testing Guide
+title: Testing
 parent: Setup
 nav_order: 2
 ---
 
 # Testing Guide
 
-AgentforceGrid includes comprehensive test classes following Salesforce testing best practices with a shared test data factory pattern.
+> **Current state:** the repository ships `ISTTestDataFactory.cls` (an `@IsTest` data builder) but **no test class consumes it**. Coverage on `InterStoreTransferService`, `InterStoreTransferAction`, and `InventoryPositionSelector` is therefore **0%**, which means a production deploy with `RunLocalTests` will fail. This page documents what's there, what's missing, and the test scenarios that need to be authored before a production release.
 
 ---
 
-## Running Tests
+## What's in the repo
 
-### Run All Local Tests
+`ISTTestDataFactory` is a `@IsTest`-annotated public class with three static helpers:
 
-```bash
-sf apex run test \
-  --test-level RunLocalTests \
-  --code-coverage \
-  --result-format human \
-  --target-org <your-org-alias>
+```apex
+public static Pharmacy_Store__c createStore(
+    String name, Boolean coldChain, String deaReg, Boolean active
+);
+
+public static Medication__c createMedication(
+    String name, String deaSchedule, Boolean coldChain
+);
+
+public static Inventory_Position__c createInventory(
+    Id storeId, Id medId, Integer qty, Integer safetyStock, Integer daysToExpiry
+);
 ```
 
-### Run a Specific Test Class
+Each helper inserts a single record with sensible defaults (San Francisco lat/lng on stores, auto-generated NDC on medications, today + N days expiry on inventory) and returns it. They're designed to be composable inside `Test.startTest()` blocks.
+
+---
+
+## What's missing
+
+A test class — call it `InterStoreTransferServiceTest` — that exercises every code path in `InterStoreTransferService.evaluate()`. The test scenarios below correspond directly to the demo `TC*` scripts in `scripts/apex/`, so the assertions and setup data should be familiar.
+
+### Recommended test methods
+
+| Test method | Setup | Assertions |
+|---|---|---|
+| `evaluate_happyPathDryRun_writesRecommendation` | Two cold-chain stores with `DEA_Registration__c`; one cold-chain medication; target qty 0 / safety 50; source qty 200 / safety 50 / expiry +90d | `result.success == true`; `result.recommendedQty == 50`; target's `Recommendation__c` and `Recommendation_Preview__c` are populated; no `Transfer_Log__c` written |
+| `evaluate_happyPathExecute_atomicallyTransfers` | Same as above, then call with `confirm=true` | Source quantity decremented by 50; target quantity incremented by 50; one `Transfer_Log__c` with status `Completed` and matching `Quantity_Transferred__c` |
+| `evaluate_scheduleII_blocksWithoutSourceSearch` | Schedule II medication; target store with low qty; multiple candidate sources with surplus | `result.success == false`; `uhText` contains `"Schedule II"` and `"DEA Form 222"`; one `Transfer_Log__c` with status `Blocked`, `Source_Store__c == null`, `Quantity_Transferred__c == 0` |
+| `evaluate_noEligibleSources_returnsDistributorFallback` | Cold-chain medication; only candidate is non-cold-chain capable | `result.success == false`; `uhText` contains `"No suitable source"` and `"emergency order"` |
+| `evaluate_nearExpirySource_excluded` | Single candidate with `Expiry_Date__c = today + 15` | `selectBestSource` returns null → distributor fallback |
+| `evaluate_blankDeaRegistration_excluded` | Single candidate with `DEA_Registration__c = ''` | Distributor fallback |
+| `evaluate_inactiveStore_excluded` | Single candidate at `Is_Active__c = false` store | Selector SOQL filter excludes it; distributor fallback |
+| `evaluate_qtyCappedAtTargetNeed` | Source surplus 200, target need 30 | `recommendedQty == 30` (not `200 × 50% = 100`) |
+| `evaluate_qtyCappedAtSourceHalfSurplus` | Source surplus 60, target need 100 | `recommendedQty == 30` (50% of source surplus, not target's full need) |
+| `evaluate_invalidId_returnsGracefulError` | Pass a deleted or non-existent Id | `result.success == false`; `uhText` starts with `"Unable to locate Inventory Position"` |
+| `executeTransfer_dmlException_rollsBack` | Inject a `DmlException` (e.g. by patching the source record to violate a validation rule before `update`) | `result.success == false`; `uhText` contains `"fully rolled back"`; source/target quantities unchanged |
+
+### Suggested coverage targets
+
+| Class | Target |
+|---|---|
+| `InterStoreTransferService` | ≥90% (this is where the policy lives) |
+| `InterStoreTransferAction` | ≥85% (just a wrapper, but invocable methods need coverage too) |
+| `InventoryPositionSelector` | ≥85% (covered indirectly by service tests; add a direct selector test for `getById` exception paths) |
+| `PostInstallScript` | Optional — `InstallHandler.onInstall` is hard to unit-test cleanly. Consider extracting the data-creation logic into a `static` helper that a test can call directly |
+
+---
+
+## Running tests
+
+Once a test class exists:
 
 ```bash
-sf apex run test \
-  --class-names InterStoreTransferServiceTest \
-  --code-coverage \
-  --result-format human \
-  --target-org <your-org-alias>
+# Run a single class
+sf apex run test --class-names InterStoreTransferServiceTest --target-org ist-dev --result-format human --code-coverage
+
+# Run all local tests with coverage
+sf apex run test --target-org ist-dev --code-coverage --result-format human --wait 10
+
+# Get coverage breakdown for a specific class
+sf apex get test --test-run-id <run-id> --code-coverage --target-org ist-dev --output-dir test-results
 ```
 
-### Run All IST Tests
+`--wait 10` blocks the CLI until the test run completes (10-minute timeout). Without `--wait`, the command returns immediately and prints a job ID you can poll with `sf apex get test`.
 
-```bash
-sf apex run test \
-  --class-names InterStoreTransferServiceTest InterStoreTransferActionTest \
-  --code-coverage \
-  --result-format human \
-  --target-org <your-org-alias>
+---
+
+## Test data strategy
+
+Use `ISTTestDataFactory` for all setup. The factory's defaults are deliberately permissive (cold-chain stores, fresh expiry dates) so that tests opt in to constraint scenarios:
+
+```apex
+@IsTest
+private class InterStoreTransferServiceTest {
+
+    @IsTest
+    static void evaluate_happyPathDryRun_writesRecommendation() {
+        // ARRANGE
+        Pharmacy_Store__c target = ISTTestDataFactory.createStore(
+            'Target Store', /* coldChain */ true, /* deaReg */ 'DEA-T-001', /* active */ true
+        );
+        Pharmacy_Store__c source = ISTTestDataFactory.createStore(
+            'Source Store', /* coldChain */ true, /* deaReg */ 'DEA-S-001', /* active */ true
+        );
+        Medication__c med = ISTTestDataFactory.createMedication(
+            'Mounjaro 5mg', /* deaSchedule */ 'None', /* coldChain */ true
+        );
+        Inventory_Position__c targetInv = ISTTestDataFactory.createInventory(
+            target.Id, med.Id, /* qty */ 0, /* safety */ 50, /* daysToExpiry */ 120
+        );
+        ISTTestDataFactory.createInventory(
+            source.Id, med.Id, /* qty */ 200, /* safety */ 50, /* daysToExpiry */ 90
+        );
+
+        // ACT
+        Test.startTest();
+        InterStoreTransferService.TransferResult result =
+            InterStoreTransferService.evaluate(targetInv.Id, /* confirm */ false);
+        Test.stopTest();
+
+        // ASSERT
+        System.assertEquals(true, result.success, 'Expected dry-run success');
+        System.assertEquals(50, result.recommendedQty, 'Expected qty capped at target need');
+        Inventory_Position__c reloaded =
+            [SELECT Recommendation__c, Recommendation_Preview__c
+             FROM Inventory_Position__c WHERE Id = :targetInv.Id];
+        System.assertNotEquals(null, reloaded.Recommendation__c);
+        System.assert(reloaded.Recommendation_Preview__c.length() <= 255);
+        System.assertEquals(0,
+            [SELECT COUNT() FROM Transfer_Log__c WHERE Inventory_Position__c = :targetInv.Id],
+            'Dry-run should not write a Transfer_Log__c');
+    }
+
+    // ... 10 more tests
+}
 ```
 
 ---
 
-## Test Classes
+## Async testing notes
 
-### InterStoreTransferServiceTest
+This project does **not** use `Queueable`, `Batch`, `Future`, or `@Schedulable`, so test classes don't need `Test.startTest()`/`Test.stopTest()` to drain async queues. The pair is still useful as a governor-limit reset boundary (one set of limits before, another after), and is included in the example above as the standard pattern.
 
-Tests the core service layer business logic. 8 test methods.
-
-| Test Method | Scenario | Asserts |
-|-------------|----------|---------|
-| `testEvaluate_HappyPath_DryRun_ReturnsRecommendation` | Dry-run with eligible source store | `success=true`, uhText contains "Shall I proceed" and source store name, `recommendedQty > 0`, `transferLogId = null` |
-| `testEvaluate_HappyPath_Execute_CreatesTransferLog` | Confirmed execution | `success=true`, `Transfer_Log__c` created with `Completed` status, source inventory decreased, transfer log quantity > 0 |
-| `testEvaluate_ScheduleII_DryRun_HardStop` | Schedule II medication dry-run | `success=false`, uhText mentions "Schedule II" and "DEA Form 222", no confirmation prompt, `Transfer_Log__c` with `Blocked` status created |
-| `testEvaluate_ScheduleII_ConfirmTrue_StillBlocked` | Schedule II with `confirm=true` | `success=false`, no `Completed` transfer logs exist — proves confirm cannot bypass compliance |
-| `testEvaluate_NoSuitableSource_ReturnsFallback` | No source stores with surplus | `success=false`, uhText mentions "No suitable source store found" and "distributor", no confirmation prompt |
-| `testEvaluate_NoSuitableSource_ColdChainMismatch` | Source exists but lacks cold-chain | `success=false` — cold-chain mismatch causes source to be filtered out |
-| `testEvaluate_NullId_ReturnsErrorGracefully` | Null inventory position ID | `success=false`, non-blank uhText — graceful error handling |
-| `testEvaluate_ExpiredSourceStock_Excluded` | Source stock expires in < 30 days | `success=false` — near-expiry source is excluded |
-
-### InterStoreTransferActionTest
-
-Tests the invocable action adapter layer. 3 test methods.
-
-| Test Method | Scenario | Asserts |
-|-------------|----------|---------|
-| `testAction_HappyPath_DryRun_ReturnsOutput` | Dry-run through action layer | Output list size = 1, `success=true`, uhText and sourceStoreName not null, `recommendedQty > 0` |
-| `testAction_ScheduleII_ReturnsComplianceBlock` | Schedule II through action layer | `success=false`, uhText contains "Schedule II" |
-| `testAction_NullConfirm_DefaultsToFalse` | `confirm=null` input | No `Completed` transfer logs exist — proves null defaults to dry-run |
-
-### ISTTestDataFactory
-
-Shared test data factory. Not a test class itself — covered transitively through usage in the test classes above.
-
-| Method | Creates |
-|--------|---------|
-| `createStore()` | `Pharmacy_Store__c` with District 1, SF coordinates (37.7749, -122.4194), configurable cold-chain, DEA reg, and active status |
-| `createMedication()` | `Medication__c` with auto-generated NDC, configurable DEA schedule and cold-chain requirement |
-| `createInventory()` | `Inventory_Position__c` linked to store and medication, with configurable quantity, safety stock, and days to expiry |
+The Flow `Execute_Inter_Store_Transfer` is auto-launched and synchronous; it can be tested by invoking `InterStoreTransferAction.execute()` directly with a list of `ActionInput` rather than through the Flow runtime.
 
 ---
 
-## Coverage Map
+## CI considerations
 
-| Class Under Test | Covered By | Key Scenarios |
-|------------------|-----------|---------------|
-| `InterStoreTransferService` | `InterStoreTransferServiceTest` | Happy path (dry-run + execute), Schedule II (dry-run + confirm=true), no source fallback, cold-chain mismatch, null ID, expired source |
-| `InterStoreTransferAction` | `InterStoreTransferActionTest` | Happy path output mapping, Schedule II output, null confirm default |
-| `InventoryPositionSelector` | `InterStoreTransferServiceTest`, `InterStoreTransferActionTest` | `getById()` exercised in every test; `findSurplusSources()` exercised in happy path, cold-chain, and expiry tests |
-| `ISTTestDataFactory` | All test classes | Every method called multiple times across all tests |
+Once a test class exists, a minimal CI workflow looks like:
 
----
+```yaml
+- name: Validate against sandbox
+  run: |
+    sf project deploy validate \
+      --source-dir force-app \
+      --target-org ${{ secrets.SANDBOX_ALIAS }} \
+      --test-level RunLocalTests \
+      --code-coverage-required 75
+```
 
-## Test Data Strategy
-
-All test data is created using `ISTTestDataFactory` — no `@TestSetup` methods are used. Each test method creates its own isolated data set to avoid cross-test dependencies.
-
-Key patterns:
-- Store names include the test context (e.g., `'CVS Downtown'`, `'CVS Westside'`) for readable assertions
-- DEA registration values are unique per test (e.g., `'DEA-TARGET-001'`, `'DEA-SOURCE-001'`)
-- Medication names include suffixes to avoid uniqueness conflicts on `NDC__c` (e.g., `'Mounjaro-Action'`, `'Mounjaro-Execute'`)
-- Expiry dates are set relative to today using `daysToExpiry` parameter — tests for expiry filtering use values below (10 days) and above (90 days) the 30-day threshold
-
----
-
-## Async Testing Notes
-
-The project does not currently use any asynchronous Apex patterns (Queueable, Batch, Schedulable, Future). All logic executes synchronously within the invocable method call. `Test.startTest()` / `Test.stopTest()` is used in all tests to reset governor limits and ensure DML finalization.
+This runs the full test suite as a check-only deploy and fails the workflow if coverage drops below 75%. Run it on every PR; gate merges on success.

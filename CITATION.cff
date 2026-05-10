@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "AgentforcePharmaGrid: Agentforce Grid–Driven Inter-Store Inventory Transfers with DEA Compliance and Audit Trail for Salesforce"
+abstract: >-
+  AgentforcePharmaGrid is a Salesforce-native solution for retail pharmacy
+  inter-store inventory transfers, driven entirely from an Agentforce Grid
+  component. It enforces DEA Schedule II compliance as a hard stop, applies
+  cold-chain capability matching and a 30-day near-expiry source exclusion,
+  proposes a transfer quantity capped at 50% of source surplus, and executes
+  the move atomically with savepoint rollback while writing an immutable
+  Transfer_Log__c audit record. The architecture uses a Service / Selector /
+  Invocable Action pattern with a Flow as the Grid-button bridge and a
+  Prompt Template that generates per-row recommendations.
+authors:
+  - family-names: "Raju"
+    given-names: "Jayavardhan"
+    alias: "jayavardhan-raju"
+version: "1.0.0"
+date-released: "2026-05-09"
+license: MIT
+repository-code: "https://github.com/jayavardhan-raju/AgentforcePharmaGrid"
+url: "https://jayavardhan-raju.github.io/AgentforcePharmaGrid/"
+keywords:
+  - salesforce
+  - apex
+  - agentforce
+  - agentforce-grid
+  - prompt-template
+  - inventory-management
+  - retail-pharmacy
+  - dea-compliance
+  - cold-chain
+  - audit-trail
+  - invocable-action
+  - service-selector-pattern
+# When you register a DOI via Zenodo, uncomment and fill in:
+# doi: "10.5281/zenodo.XXXXXXX"
+# identifiers:
+#   - type: doi
+#     value: "10.5281/zenodo.XXXXXXX"
+#     description: "Concept DOI (resolves to latest version)"

@@ -1,20 +1,15 @@
-title: AgentforceGrid
-description: Agentforce-powered inter-store inventory transfer system for pharmacy networks
-baseurl: "/AgentforceGrid"
+title: AgentforcePharmaGrid
+description: Agentforce Grid–driven inter-store inventory transfers for retail pharmacies with built-in DEA compliance and audit trail
+baseurl: "/AgentforcePharmaGrid"
 url: "https://jayavardhan-raju.github.io"
-
 remote_theme: just-the-docs/just-the-docs@v0.10.0
-
 color_scheme: light
-
 aux_links:
   "GitHub":
-    - "https://github.com/jayavardhan-raju/AgentforceGrid"
-
+    - "https://github.com/jayavardhan-raju/AgentforcePharmaGrid"
 search_enabled: true
-
-footer_content: "AgentforceGrid — Built by <a href=\"https://github.com/jayavardhan-raju\">Jayavardhan Raju</a>"
-
+heading_anchors: true
+footer_content: "AgentforcePharmaGrid — Built by <a href=\"https://github.com/jayavardhan-raju\">Jayavardhan Raju</a>. Released under the MIT License."
 exclude:
   - node_modules/
   - force-app/
@@ -25,3 +20,5 @@ exclude:
   - "*.js"
   - .husky/
   - .vscode/
+  - Gemfile
+  - Gemfile.lock

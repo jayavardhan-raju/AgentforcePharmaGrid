@@ -1,185 +1,209 @@
-# AgentforceGrid
+# AgentforcePharmaGrid
 
-**Agentforce-powered inter-store inventory transfer system for pharmacy networks — with DEA compliance, cold-chain validation, and atomic audit trails.**
+**Agentforce Grid–driven inter-store inventory transfers for retail pharmacies — with built-in DEA Schedule II compliance, cold-chain enforcement, and full audit trail.**
+
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Salesforce-00A1E0.svg)](https://www.salesforce.com)
+[![API](https://img.shields.io/badge/API-v65.0-1798c1.svg)](https://developer.salesforce.com/docs/atlas.en-us.api.meta/api/)
+[![Agentforce](https://img.shields.io/badge/Agentforce-Grid-9B59B6.svg)](https://www.salesforce.com/agentforce/)
 
 ---
 
 ## Overview
 
-AgentforceGrid automates the process of rebalancing medication inventory across pharmacy store locations using Salesforce Agentforce. When a store's stock of a medication drops below its safety threshold, an operations user can trigger a transfer recommendation directly from an Agentforce Grid. The system identifies the best source store in the network, validates compliance and logistics constraints, and either recommends or executes the transfer — all within a two-step conversational workflow.
+AgentforcePharmaGrid is a Salesforce-native solution that lets a pharmacy ops team find low-stock medications across stores, get an Agentforce-generated recommendation per row, and execute an inter-store transfer with one click — all from an Agentforce Grid component.
 
-The system is built specifically for regulated pharmacy operations. It enforces DEA Schedule II controlled substance restrictions (requiring manual DEA Form 222 for those medications), validates cold-chain handling capability between source and target stores, excludes near-expiry stock from transfers, and writes an immutable audit trail for every action — including denied requests.
+The core logic lives in three Apex classes (`InterStoreTransferService`, `InterStoreTransferAction`, `InventoryPositionSelector`) plus a Flow (`Execute_Inter_Store_Transfer`) and a Prompt Template (`IST_Inventory_Recommendation`). There is no LWC, no middleware, and no external service. The Grid's per-row "Transfer/Optimize" button invokes the Flow directly, the Flow calls the Apex invocable action, and the action returns a structured `uhText` that surfaces back into the Grid conversation.
 
-The architecture follows a clean Action → Service → Selector pattern with no triggers. All business logic is isolated in the service layer, all SOQL is isolated in the selector, and the invocable action layer is a thin adapter for Agentforce.
+What makes this project different from a generic transfer utility:
+
+- **Hard compliance gate** for DEA Schedule II — no source search, no recommendation, no execution. A blocked `Transfer_Log__c` record is still written for the DEA audit trail.
+- **Cold-chain matching** — if the medication requires cold chain, only stores with `Cold_Chain_Capable__c = true` are eligible sources.
+- **Near-expiry exclusion** — source stock expiring within 30 days is filtered out so we don't move soon-to-be-wasted inventory.
+- **Two-call agent contract** — `confirm = false` writes a recommendation; `confirm = true` executes atomically with savepoint rollback. The agent surfaces the dry-run text and asks the user to confirm.
+- **Grid-friendly preview field** — the full recommendation is in `Recommendation__c` (Long Text Area), and a 255-char `Recommendation_Preview__c` is what the Agentforce Grid column actually renders, since Long Text Area is not a supported Grid column type.
 
 ### Key Capabilities
 
-- **Two-Step Agent Workflow** — First call (`confirm=false`) returns a dry-run recommendation with source store, quantity, and compliance details. Second call (`confirm=true`) executes the transfer atomically.
-- **DEA Schedule II Hard Stop** — Medications classified as Schedule II are automatically blocked with no source search, no confirm prompt, and a compliance block audit log. The agent surfaces a DEA Form 222 instruction.
-- **Cold-Chain Validation** — Source stores are only eligible if they have cold-chain capability when the medication requires it (`Cold_Chain_Required__c` → `Cold_Chain_Capable__c`).
-- **Expiry Threshold Filtering** — Source stock expiring within 30 days (`MIN_DAYS_TO_EXPIRY = 30`) is excluded from transfer candidates.
-- **Smart Quantity Calculation** — Transfers 50% of the source surplus above safety stock (`TRANSFER_BUFFER_PCT = 50`), capped at the target's exact need to reach its own safety stock.
-- **Atomic Execution with Rollback** — Confirmed transfers use `Database.setSavepoint()` with full rollback on any failure. No partial inventory updates are possible.
-- **Immutable Audit Trail** — Every transfer creates a `Transfer_Log__c` record. Compliance blocks also generate audit logs with `Transfer_Status__c = 'Blocked'`.
-- **FLS/CRUD Enforcement** — All DML checks `Schema.sObjectType` for updateability/createability. `Security.stripInaccessible()` is applied before inventory updates.
+- **Schedule II hard-stop** — `InterStoreTransferService.isScheduleII()` returns the DEA Form 222 message and writes a `Blocked` log entry. No automated transfer is ever attempted for Schedule II.
+- **Surplus-source selection** — `InventoryPositionSelector.findSurplusSources()` returns candidates ordered by `Quantity__c DESC`, then `selectBestSource()` filters by cold-chain capability, presence of a DEA registration number, and expiry threshold.
+- **Capped transfer math** — `calculateTransferQty()` proposes 50% of the source's surplus above its own safety stock, then caps the result at exactly what the target needs to reach safety stock.
+- **Atomic execution with rollback** — `executeTransfer()` deducts from source, adds to target, inserts a `Completed` `Transfer_Log__c`, all inside a `Database.setSavepoint()`/`rollback` boundary with `Security.stripInaccessible(AccessType.UPDATABLE, ...)` for FLS enforcement.
+- **Distributor-fallback messaging** — when no eligible source is found, the action returns a `uhText` instructing the ops user to place an emergency order with the primary distributor and contact their district manager.
+- **Prompt-template recommendations** — `IST_Inventory_Recommendation` renders a 1–2 sentence per-row recommendation in the Grid using inventory record fields, with rules for Schedule II, critical stock, near-expiry, and healthy stock states.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      AGENTFORCE GRID UI                         │
-│              (Inventory_Position__c List View)                   │
-│         Ops user clicks "Transfer/Optimize" on a row            │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              Execute_Inter_Store_Transfer (Flow)                 │
-│         AutoLaunchedFlow — passes inventoryPositionId            │
-│         Input: inventoryPositionId, confirm                      │
-│         Output: success, uhText, sourceStoreId, transferLogId    │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│           InterStoreTransferAction (Invocable Action)            │
-│   @InvocableMethod — thin adapter, maps ActionInput/Output       │
-│   Delegates ALL logic to InterStoreTransferService               │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│           InterStoreTransferService (Service Layer)              │
-│   Core business logic:                                           │
-│     • DEA Schedule II compliance gate                            │
-│     • Source store selection (cold-chain, DEA reg, expiry)        │
-│     • Transfer quantity calculation (50% buffer, capped)         │
-│     • Dry-run recommendation (writes Recommendation__c)          │
-│     • Atomic execution (Savepoint + Transfer_Log__c)             │
-│     • FLS/CRUD enforcement + stripInaccessible                   │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│           InventoryPositionSelector (Selector Layer)             │
-│   Read-only SOQL:                                                │
-│     • getById() — full context query with Store + Medication     │
-│     • findSurplusSources() — surplus candidates, sorted by qty   │
-│   All queries use USER_MODE for row-level security               │
-└─────────────────────────────────────────────────────────────────┘
++-----------------------------------------------------------------+
+|                      AGENTFORCE GRID UI                          |
+|     (per-row Transfer/Optimize button + Recommendation column)   |
++-----------------------+-------------------+----------------------+
+                        |                   |
+       (per-row prompt) |                   | (button click)
+                        v                   v
+        +-------------------------+  +---------------------------+
+        |   IST_Inventory_        |  |  Execute_Inter_Store_     |
+        |   Recommendation        |  |  Transfer (Flow)          |
+        |   (Prompt Template)     |  |                           |
+        +-------------------------+  +-------------+-------------+
+                                                    |
+                                                    v
+                                  +-------------------------------+
+                                  |  InterStoreTransferAction      |
+                                  |  (@InvocableMethod)            |
+                                  +---------------+----------------+
+                                                  |
+                                                  v
+                                  +-------------------------------+
+                                  |  InterStoreTransferService     |
+                                  |    .evaluate(invId, confirm)   |
+                                  +---+------------+--------------++
+                                      |            |              |
+                                      v            v              v
+                          +-------------------+  +---------+  +---------+
+                          | InventoryPosition |  | Schema. |  | Database|
+                          | Selector          |  | strip   |  | .save-  |
+                          | (SOQL only)       |  | Inacces.|  | point() |
+                          +-------------------+  +---------+  +---------+
+                                  |
+                                  v
+                  +-----------------+-----------------+----------------+
+                  | Inventory_      | Transfer_Log__c | Pharmacy_      |
+                  | Position__c     | (audit)         | Store__c       |
+                  | (read/update)   |                 | Medication__c  |
+                  +-----------------+-----------------+----------------+
 ```
 
-| Layer | Class | Responsibility |
-|-------|-------|----------------|
-| Flow | `Execute_Inter_Store_Transfer` | Agentforce entry point — passes `inventoryPositionId` to the invocable action, sets `refreshView = true` on completion |
-| Action | `InterStoreTransferAction` | `@InvocableMethod` adapter — maps `ActionInput`/`ActionOutput` wrappers, delegates to service |
-| Service | `InterStoreTransferService` | All business logic — compliance checks, source selection, quantity calculation, dry-run recommendations, atomic execution, audit logging |
-| Selector | `InventoryPositionSelector` | All SOQL — `getById()` and `findSurplusSources()` with full relational context, `USER_MODE` enforcement |
-| Test Factory | `ISTTestDataFactory` | Shared test data creation for stores, medications, and inventory positions |
+| Layer | Class / Asset | Responsibility |
+|---|---|---|
+| UI | Agentforce Grid (record page on `Inventory_Position__c`) | Surfaces critical stock rows; renders per-row prompt output; exposes Transfer/Optimize button. |
+| AI | `IST_Inventory_Recommendation` (Prompt Template) | Generates 1–2 sentence row-level recommendation, ≤150 chars, following DEA / stock-level rules. |
+| Orchestration | `Execute_Inter_Store_Transfer` (Flow) | Triggered by the Grid button; passes `inventoryPositionId` to the invocable Apex action. |
+| Action | `InterStoreTransferAction.execute()` | Invocable entry point. Wraps service result in `ActionOutput` for the agent to consume. |
+| Service | `InterStoreTransferService.evaluate()` | All business rules: compliance gate, source selection, qty calc, dry-run vs execute branching, atomic DML. |
+| Selector | `InventoryPositionSelector` | All SOQL. `getById()` and `findSurplusSources()`. No DML, no business logic. |
+| Data | `Pharmacy_Store__c`, `Medication__c`, `Inventory_Position__c`, `Transfer_Log__c` | Domain model. `Transfer_Log__c` is the immutable audit object. |
+| Install | `PostInstallScript` (InstallHandler) | Seeds 6 stores, 6 medications, 14 inventory positions; assigns `IST_Ops_User`; verifies prompt template. |
 
 ---
 
 ## Data Model
 
-### Pharmacy_Store__c
+### `Pharmacy_Store__c`
+Represents a pharmacy store location.
 
-Represents a physical pharmacy store location in the distribution network.
-
-| API Name | Type | Required | Description |
-|----------|------|----------|-------------|
+| Field API Name | Type | Required | Notes |
+|---|---|---|---|
 | `Name` | Text | Yes | Pharmacy Store Name |
-| `District__c` | Text(80) | No | Operational district of the store |
-| `Latitude__c` | Number(9,6) | No | Store latitude coordinate |
-| `Longitude__c` | Number(9,6) | No | Store longitude coordinate |
-| `Cold_Chain_Capable__c` | Checkbox | — | Whether the store can handle cold-chain medications (default: `false`) |
-| `DEA_Registration__c` | Text(50) | No | DEA registration identifier for controlled substances handling |
-| `Is_Active__c` | Checkbox | — | Whether the store is active for operations (default: `true`) |
+| `District__c` | Text(80) | No | Operational district for rollups/routing |
+| `Latitude__c` | Number(9,6) | No | Store latitude |
+| `Longitude__c` | Number(9,6) | No | Store longitude |
+| `Cold_Chain_Capable__c` | Checkbox | No (default `false`) | Drives cold-chain eligibility filter |
+| `DEA_Registration__c` | Text(50) | No | Source store must have a non-blank value to be eligible |
+| `Is_Active__c` | Checkbox | No (default `true`) | Inactive stores excluded from `findSurplusSources()` |
 
-### Medication__c
-
+### `Medication__c`
 Represents a medication with regulatory and handling attributes.
 
-| API Name | Type | Required | Description |
-|----------|------|----------|-------------|
+| Field API Name | Type | Required | Notes |
+|---|---|---|---|
 | `Name` | Text | Yes | Medication Name |
-| `NDC__c` | Text(30) | Yes | National Drug Code — unique identifier (unique field) |
-| `DEA_Schedule__c` | Picklist | No | DEA controlled-substance schedule: `II`, `III`, `IV`, `V`, `None` (default: `None`) |
-| `Cold_Chain_Required__c` | Checkbox | — | Whether this medication requires cold-chain handling (default: `false`) |
+| `NDC__c` | Text(30), unique | Yes | National Drug Code, 10/11-digit |
+| `DEA_Schedule__c` | Picklist (restricted) | No | Values: `II`, `III`, `IV`, `V`, `None` (default). `II` triggers compliance hard-stop. |
+| `Cold_Chain_Required__c` | Checkbox | No (default `false`) | When `true`, only cold-chain-capable source stores are eligible |
 
-### Inventory_Position__c
+### `Inventory_Position__c`
+Inventory position of a specific Medication at a specific Pharmacy Store. Auto-number `INV-{000000}`.
 
-Inventory position of a specific Medication at a specific Pharmacy Store. Auto-numbered as `INV-{000000}`.
-
-| API Name | Type | Required | Description |
-|----------|------|----------|-------------|
-| `Name` | AutoNumber | — | `INV-{000000}` |
-| `Store__c` | Lookup(Pharmacy_Store__c) | Yes | Reference to the Pharmacy Store (Restrict delete) |
-| `Medication__c` | Lookup(Medication__c) | Yes | Reference to the Medication (Restrict delete) |
+| Field API Name | Type | Required | Notes |
+|---|---|---|---|
+| `Store__c` | Lookup → `Pharmacy_Store__c` | Yes | Restrict on delete |
+| `Medication__c` | Lookup → `Medication__c` | Yes | Restrict on delete |
 | `Quantity__c` | Number(18,0) | Yes | On-hand quantity |
-| `Safety_Stock__c` | Number(18,0) | No | Safety stock threshold below which replenishment is recommended |
-| `Expiry_Date__c` | Date | No | Expiry date of the current lot |
-| `Status__c` | Formula(Text) | — | Computed: `OUT_OF_STOCK` (qty ≤ 0), `LOW` (qty < safety), `HEALTHY`, `UNKNOWN` |
-| `Status_Color__c` | Formula(Text) | — | Color code: `RED`, `ORANGE`, `GREEN`, `GRAY` based on `Status__c` |
-| `Store_Name__c` | Formula(Text) | — | `Store__r.Name` |
-| `Medication_Name__c` | Formula(Text) | — | `Medication__r.Name` |
-| `Recommendation__c` | Long Text Area(32768) | No | Full recommendation text for record detail view |
-| `Recommendation_Preview__c` | Text(255) | No | Truncated recommendation for Agentforce Grid column display |
+| `Safety_Stock__c` | Number(18,0) | No | Threshold for replenishment |
+| `Expiry_Date__c` | Date | No | Lot expiry date |
+| `Recommendation__c` | Long Text Area (32768) | No | Full dry-run recommendation text |
+| `Recommendation_Preview__c` | Text(255) | No | Truncated preview — what the Agentforce Grid column actually renders |
+| `Status__c` | Formula (Text) | — | `OUT_OF_STOCK` / `LOW` / `HEALTHY` / `UNKNOWN` based on `Quantity__c` vs `Safety_Stock__c` |
+| `Status_Color__c` | Formula (Text) | — | `RED` / `ORANGE` / `GREEN` / `GRAY` color code for the status |
+| `Store_Name__c` | Formula (Text) | — | `Store__r.Name` flattened for Grid display |
+| `Medication_Name__c` | Formula (Text) | — | `Medication__r.Name` flattened for Grid display |
 
-### Transfer_Log__c
+### `Transfer_Log__c`
+Immutable audit trail for inter-store transfers and compliance outcomes. Auto-number `TRN-{000000}`.
 
-Immutable audit trail for inter-store transfers and compliance outcomes. Auto-numbered as `TRN-{000000}`.
+| Field API Name | Type | Notes |
+|---|---|---|
+| `Source_Store__c` | Lookup → `Pharmacy_Store__c` | Null on `Blocked` Schedule II logs |
+| `Target_Store__c` | Lookup → `Pharmacy_Store__c` | The store with the critical position |
+| `Medication__c` | Lookup → `Medication__c` | |
+| `Inventory_Position__c` | Lookup → `Inventory_Position__c` | The target position evaluated |
+| `Quantity_Transferred__c` | Number(18,0) | `0` for blocked entries |
+| `Transfer_Date__c` | DateTime | Set to `DateTime.now()` |
+| `Transfer_Status__c` | Picklist (restricted) | `Pending` (default), `Completed`, `Blocked` |
+| `Notes__c` | Long Text Area (32768) | Rationale, source/target names, Schedule II block reason |
 
-| API Name | Type | Required | Description |
-|----------|------|----------|-------------|
-| `Name` | AutoNumber | — | `TRN-{000000}` |
-| `Source_Store__c` | Lookup(Pharmacy_Store__c) | No | Source store for the transfer (SetNull on delete) |
-| `Target_Store__c` | Lookup(Pharmacy_Store__c) | No | Target store for the transfer (SetNull on delete) |
-| `Medication__c` | Lookup(Medication__c) | No | Medication associated with this transfer (SetNull on delete) |
-| `Inventory_Position__c` | Lookup(Inventory_Position__c) | No | Target inventory position evaluated (SetNull on delete) |
-| `Quantity_Transferred__c` | Number(18,0) | No | Quantity moved from source to target (0 for blocked) |
-| `Transfer_Status__c` | Picklist | No | `Pending` (default), `Completed`, `Blocked` |
-| `Transfer_Date__c` | DateTime | No | Date/time the transfer was executed or evaluated |
-| `Notes__c` | Long Text Area(32768) | No | Details about the recommendation, rationale, or compliance block |
+> Note: per `IST_Ops_User`, this object is **create + read only** — `allowEdit = false`, `allowDelete = false`. That's the intended audit semantic.
 
 ---
 
-## Transfer Quantity Calculation
+## Transfer Logic & Constants
 
-The transfer quantity engine uses a conservative approach to avoid destabilizing the source store:
+The four constants in `InterStoreTransferService` define the entire policy:
+
+| Constant | Value | Effect |
+|---|---|---|
+| `TRANSFER_BUFFER_PCT` | `50` | Proposed transfer is 50% of source surplus above its safety stock |
+| `MIN_DAYS_TO_EXPIRY` | `30` | Source candidates expiring within this window are excluded |
+| `DEA_SCHEDULE_II` | `'II'` | Picklist value that triggers the compliance hard-stop |
+| `PREVIEW_MAX_LENGTH` | `255` | `Recommendation_Preview__c` cap; longer text is truncated with `...` |
+
+**Quantity calculation** (`calculateTransferQty`):
 
 ```
 sourceSurplus = source.Quantity__c - source.Safety_Stock__c
 targetNeed    = target.Safety_Stock__c - target.Quantity__c
-proposed      = sourceSurplus × 50% (TRANSFER_BUFFER_PCT)
-transferQty   = MIN(proposed, targetNeed)
+proposed      = sourceSurplus * 50 / 100
+qty           = min(proposed, targetNeed)
 ```
 
-**Worked Example:**
+**Worked example** — Mounjaro 5mg at CVS Westside SF (qty=200, safety=50) transferring to CVS Downtown SF (qty=0, safety=50):
 
-| Variable | Value |
-|----------|-------|
-| Source Quantity | 200 units |
-| Source Safety Stock | 50 units |
-| Source Surplus | 150 units |
-| Target Quantity | 0 units |
-| Target Safety Stock | 50 units |
-| Target Need | 50 units |
-| Proposed (50% of surplus) | 75 units |
-| **Transfer Qty** (capped at need) | **50 units** |
+- `sourceSurplus = 200 − 50 = 150`
+- `targetNeed = 50 − 0 = 50`
+- `proposed = 150 × 50 / 100 = 75`
+- `qty = min(75, 50) = 50`
 
-### Source Selection Eligibility Rules
+The target gets exactly enough to hit its safety stock; the source keeps a 50-unit buffer above its own threshold.
 
-All of the following must pass for a source store to be eligible:
+**Eligibility filter order** (`selectBestSource`) — candidates are pre-sorted by `Quantity__c DESC`, so the first one to pass all three checks wins:
 
-1. **Cold-chain match** — If `Medication__c.Cold_Chain_Required__c = true`, the source `Store__r.Cold_Chain_Capable__c` must also be `true`
-2. **DEA registration** — Source `Store__r.DEA_Registration__c` must not be blank
-3. **Expiry threshold** — Source stock `Expiry_Date__c` must be ≥ 30 days from today
-4. **Active store** — Source `Store__r.Is_Active__c = true` (enforced in SOQL WHERE clause)
-5. **Surplus above safety** — Source `Quantity__c > target.Safety_Stock__c + 1` (enforced in SOQL WHERE clause)
+1. If `Medication__r.Cold_Chain_Required__c` and `!Store__r.Cold_Chain_Capable__c` → skip
+2. If `Store__r.DEA_Registration__c` is blank → skip
+3. If `Expiry_Date__c` is set and `today.daysBetween(Expiry_Date__c) < 30` → skip
 
-Candidates are sorted by `Quantity__c DESC` — the first eligible candidate is the best available source.
+If every candidate fails, the action returns the distributor-fallback `uhText`.
+
+---
+
+## Demo Scenarios
+
+Ready-to-run anonymous Apex scripts live in `scripts/apex/`. See [scripts/DEMO_PLAYBOOK.md](scripts/DEMO_PLAYBOOK.md) for full instructions.
+
+| Script | Scenario | What It Demonstrates |
+|---|---|---|
+| `TC1_HappyPath_ColdChainTransfer.apex` | Mounjaro 5mg, cold-chain match, dry-run + execute | Full happy path: surplus selection, cold-chain filter passes, recommendation written, savepoint execution, audit log written |
+| `TC2_ScheduleII_ComplianceBlock.apex` | Adderall XR 30mg, Schedule II hard stop | Compliance gate fires before any source search; `Blocked` `Transfer_Log__c` written; DEA Form 222 message returned |
+| `TC3_DistributorFallback_NearExpiry.apex` | Ozempic 1mg, only candidate is near-expiry | All candidates fail eligibility; distributor-fallback `uhText` returned; no inventory mutation |
+
+Run with:
+
+```bash
+sf apex run --file scripts/apex/TC1_HappyPath_ColdChainTransfer.apex --target-org your-org
+```
 
 ---
 
@@ -187,146 +211,103 @@ Candidates are sorted by `Quantity__c DESC` — the first eligible candidate is 
 
 ### Prerequisites
 
-- Salesforce org with **Agentforce** enabled (API v65.0+)
-- Salesforce CLI (`sf`) installed
-- A Dev Hub enabled (for scratch orgs) or target sandbox/production org
+- Salesforce org with **Agentforce enabled** (Prompt Template requires the `AiPrompt` SObject)
+- Salesforce CLI (`sf`) installed and authenticated (`sf org login web`)
+- API v65.0 (project's declared API version)
 
-### Deploy to a Scratch Org
-
-```bash
-git clone https://github.com/jayavardhan-raju/AgentforceGrid.git
-cd AgentforceGrid
-
-sf org create scratch -f config/project-scratch-def.json -a AgentforceGrid -d 30
-sf project deploy start -o AgentforceGrid
-sf org assign permset -n IST_Ops_User -o AgentforceGrid
-sf org open -o AgentforceGrid
-```
-
-### Deploy to a Sandbox or Production
+### Deploy
 
 ```bash
-sf project deploy start \
-  --target-org <your-org-alias> \
-  --source-dir force-app
+# Deploy the source
+sf project deploy start --source-dir force-app --target-org your-org
+
+# Assign the permission set to your user
+sf org assign permset --name IST_Ops_User --target-org your-org
+
+# (Optional) seed demo data via the post-install logic, manually
+sf apex run --file scripts/apex/TC1_HappyPath_ColdChainTransfer.apex --target-org your-org
 ```
 
-### Post-Deployment Configuration
+### Post-deploy steps
 
-1. **Assign Permission Set** — Assign `IST_Ops_User` to all operations users who will use the Agentforce Grid
-2. **Activate the Flow** — Verify `Execute_Inter_Store_Transfer` flow is Active in Setup → Flows
-3. **Configure Agentforce Grid** — Set up the Agentforce Grid on the `Inventory_Position__c` object with the `Inventory Transfer Ops` list view
-4. **Map the Invocable Action** — Connect the `Execute Inter-Store Transfer` action to the Grid's Transfer/Optimize button
-5. **Load Sample Data** — Run the 3 Apex data scripts **in order**:
+1. Verify the prompt template `IST_Inventory_Recommendation` is published (Setup → Prompt Builder).
+2. Activate the Flow `Execute_Inter_Store_Transfer` if not already active.
+3. On the `Inventory_Position__c` record page (Lightning App Builder), add the Agentforce Grid component and bind:
+   - **Recommendation column** → `IST_Inventory_Recommendation` prompt template
+   - **Transfer/Optimize button** → `Execute_Inter_Store_Transfer` Flow with input `{Salesforce.Id}` mapped to `inventoryPositionId`
+4. Confirm `IST_Ops_User` permission set is assigned to ops users.
 
-```bash
-# Script 1: Create 6 Pharmacy Stores (2 districts, varied capabilities)
-sf apex run --file scripts/data/1_Create_Pharmacy_Stores.apex --target-org <your-org-alias>
-
-# Script 2: Create 6 Medications (Schedule II, cold-chain, standard)
-sf apex run --file scripts/data/2_Create_Medications.apex --target-org <your-org-alias>
-
-# Script 3: Create 16 Inventory Positions (6 demo scenarios)
-sf apex run --file scripts/data/3_Create_Inventory_Positions.apex --target-org <your-org-alias>
-```
-
-The scripts create a complete demo dataset with 6 pre-built scenarios: happy path cold-chain transfer, Schedule II compliance block, no-source distributor fallback, near-expiry source exclusion, Schedule IV allowed transfer, and multi-source selection. See [Deployment Guide](https://jayavardhan-raju.github.io/AgentforceGrid/setup/deployment.html) for full details on each scenario.
-
----
-
-## Security
-
-- **Sharing Model** — All classes use `with sharing`, enforcing the running user's record-level access
-- **SOQL Mode** — All queries use `WITH USER_MODE` for row-level security enforcement
-- **CRUD Checks** — `Schema.sObjectType.*.isUpdateable()` and `isCreateable()` are checked before every DML operation
-- **FLS Enforcement** — `Security.stripInaccessible(AccessType.UPDATABLE, ...)` is applied to inventory position updates
-- **Permission Set** — `IST_Ops_User` grants CRUD on `Pharmacy_Store__c`, `Medication__c`, `Inventory_Position__c` and Create+Read on `Transfer_Log__c` (no edit/delete on audit logs)
-- **Transfer_Log__c Immutability** — The permission set grants only Create and Read on Transfer Logs — no Edit or Delete — ensuring the audit trail cannot be modified after creation
-
----
-
-## Testing
-
-### Run All Tests
-
-```bash
-sf apex run test \
-  --test-level RunLocalTests \
-  --code-coverage \
-  --result-format human \
-  --target-org <your-org-alias>
-```
-
-### Test Classes
-
-| Test Class | Covers | Scenarios |
-|------------|--------|-----------|
-| `InterStoreTransferServiceTest` | `InterStoreTransferService`, `InventoryPositionSelector` | Happy path dry-run, happy path execution, Schedule II block (dry-run + confirm=true), no source fallback, cold-chain mismatch, null ID handling, expired source exclusion |
-| `InterStoreTransferActionTest` | `InterStoreTransferAction` | Happy path dry-run output mapping, Schedule II compliance block, null confirm defaults to false |
-| `ISTTestDataFactory` | — | Shared test data factory (covered transitively) |
-
-### Test Coverage Map
-
-- `InterStoreTransferService` — 7 test methods covering: recommendation flow, execution with Transfer_Log__c creation, Schedule II hard stop (both confirm=false and confirm=true), distributor fallback, cold-chain filtering, expiry filtering, null ID error handling
-- `InterStoreTransferAction` — 3 test methods covering: dry-run output wiring, compliance block output, null confirm default behavior
-- `InventoryPositionSelector` — Covered transitively through service and action tests (both `getById` and `findSurplusSources` are exercised)
+If you installed via a managed package, `PostInstallScript.onInstall()` does steps 1, 4, and seeds demo data automatically.
 
 ---
 
 ## Project Structure
 
 ```
-force-app/
-└── main/
-    └── default/
-        ├── classes/
-        │   ├── InterStoreTransferAction.cls          # Invocable Action (Agentforce entry)
-        │   ├── InterStoreTransferAction.cls-meta.xml
-        │   ├── InterStoreTransferActionTest.cls       # Action layer tests
-        │   ├── InterStoreTransferActionTest.cls-meta.xml
-        │   ├── InterStoreTransferService.cls          # Core service logic
-        │   ├── InterStoreTransferService.cls-meta.xml
-        │   ├── InterStoreTransferServiceTest.cls      # Service layer tests
-        │   ├── InterStoreTransferServiceTest.cls-meta.xml
-        │   ├── InventoryPositionSelector.cls          # SOQL selector
-        │   ├── InventoryPositionSelector.cls-meta.xml
-        │   ├── ISTTestDataFactory.cls                 # Test data factory
-        │   └── ISTTestDataFactory.cls-meta.xml
-        ├── flows/
-        │   └── Execute_Inter_Store_Transfer.flow-meta.xml
-        ├── objects/
-        │   ├── Inventory_Position__c/
-        │   │   ├── fields/                            # 12 fields
-        │   │   └── listViews/                         # All, Inventory Transfer Ops
-        │   ├── Medication__c/
-        │   │   └── fields/                            # 3 fields
-        │   ├── Pharmacy_Store__c/
-        │   │   └── fields/                            # 6 fields
-        │   └── Transfer_Log__c/
-        │       └── fields/                            # 8 fields
-        └── permissionsets/
-            └── IST_Ops_User.permissionset-meta.xml
-scripts/
-└── data/
-    ├── 1_Create_Pharmacy_Stores.apex          # Script 1: 6 stores, 2 districts
-    ├── 2_Create_Medications.apex              # Script 2: 6 meds, varied DEA schedules
-    └── 3_Create_Inventory_Positions.apex      # Script 3: 16 positions, 6 demo scenarios
+force-app/main/default/
+├── classes/
+│   ├── InterStoreTransferService.cls       Core service with all business rules
+│   ├── InterStoreTransferAction.cls        @InvocableMethod entry for Flow/Agent
+│   ├── InventoryPositionSelector.cls       SOQL-only selector
+│   ├── ISTTestDataFactory.cls              @IsTest data factory (no test class yet)
+│   └── PostInstallScript.cls               InstallHandler — seed + permset
+├── objects/
+│   ├── Pharmacy_Store__c/
+│   ├── Medication__c/
+│   ├── Inventory_Position__c/
+│   └── Transfer_Log__c/
+├── flows/
+│   └── Execute_Inter_Store_Transfer.flow-meta.xml
+├── prompts/
+│   └── IST_Inventory_Recommendation.prompt-meta.xml
+├── permissionsets/
+│   └── IST_Ops_User.permissionset-meta.xml
+└── layouts/
+    └── Transfer_Log__c-Transfer Log Layout.layout-meta.xml
 ```
 
 ---
 
-## Contributing
+## Known Gaps
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Commit your changes: `git commit -m "Add my feature"`
-4. Push to the branch: `git push origin feature/my-feature`
-5. Open a Pull Request
+Documenting these honestly so contributors know what's missing:
 
-Please ensure all new code includes test coverage targeting 90%+ and follows the Action → Service → Selector pattern.
+- **No Apex test class yet.** `ISTTestDataFactory` is `@IsTest` and provides `createStore`, `createMedication`, `createInventory` helpers, but there is no `*Test.cls` consumer. To deploy to a production org, you'll need ≥75% coverage; expect to write `InterStoreTransferServiceTest` covering the happy path, Schedule II block, no-eligible-source fallback, near-expiry exclusion, cold-chain mismatch, and savepoint rollback paths.
+- **No LWC.** The UI is the standard Agentforce Grid component on the record page — there is no custom Lightning Web Component in this repo.
+- **`System.debug()` left in production code.** `InterStoreTransferService` and `InterStoreTransferAction` both have `System.debug('======>...')` calls that should be removed or gated behind a feature flag before a real production deploy.
+- **`Recommendation__c` not cleared on execution.** After `executeTransfer()`, only `Recommendation_Preview__c` is overwritten with the completion message; the long-form `Recommendation__c` still holds the pre-execution dry-run text.
+
+---
+
+## Citing This Project
+
+If you use AgentforcePharmaGrid in research, architecture documentation, or a derived implementation, please cite it. See [CITING.md](CITING.md) for full BibTeX, APA, IEEE, and Chicago formats.
+
+GitHub provides a **"Cite this repository"** button in the right sidebar that reads from [CITATION.cff](CITATION.cff).
+
+**Quick BibTeX:**
+
+```bibtex
+@software{raju2026agentforcepharmagrid,
+  author    = {Raju, Jayavardhan},
+  title     = {AgentforcePharmaGrid: Agentforce Grid--Driven Inter-Store Inventory
+               Transfers with DEA Compliance and Audit Trail for Salesforce},
+  year      = {2026},
+  url       = {https://github.com/jayavardhan-raju/AgentforcePharmaGrid},
+  version   = {1.0.0}
+}
+```
+
+A DOI can be registered through Zenodo — see [CITING.md](CITING.md) for the one-time setup.
+
+---
+
+## License
+
+MIT — see `LICENSE` if present, otherwise add one before publishing.
 
 ---
 
 ## Author
 
-**Jayavardhan Raju** — [GitHub](https://github.com/jayavardhan-raju)
+**Jayavardhan Raju** — [@jayavardhan-raju](https://github.com/jayavardhan-raju) · [jayraju.com](https://jayraju.com)
