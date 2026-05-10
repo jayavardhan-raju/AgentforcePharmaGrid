@@ -10,40 +10,6 @@
         <name>CustomObject</name>
     </types>
 
-    <!-- ═══ Custom Fields ════════════════════════════════════════════════ -->
-    <types>
-        <!-- Inventory_Position__c -->
-        <members>Inventory_Position__c.Expiry_Date__c</members>
-        <members>Inventory_Position__c.Medication__c</members>
-        <members>Inventory_Position__c.Quantity__c</members>
-        <members>Inventory_Position__c.Recommendation__c</members>
-        <members>Inventory_Position__c.Safety_Stock__c</members>
-        <members>Inventory_Position__c.Status__c</members>
-        <members>Inventory_Position__c.Status_Color__c</members>
-        <members>Inventory_Position__c.Store__c</members>
-        <!-- Medication__c -->
-        <members>Medication__c.Cold_Chain_Required__c</members>
-        <members>Medication__c.DEA_Schedule__c</members>
-        <members>Medication__c.NDC__c</members>
-        <!-- Pharmacy_Store__c -->
-        <members>Pharmacy_Store__c.Cold_Chain_Capable__c</members>
-        <members>Pharmacy_Store__c.DEA_Registration__c</members>
-        <members>Pharmacy_Store__c.District__c</members>
-        <members>Pharmacy_Store__c.Is_Active__c</members>
-        <members>Pharmacy_Store__c.Latitude__c</members>
-        <members>Pharmacy_Store__c.Longitude__c</members>
-        <!-- Transfer_Log__c -->
-        <members>Transfer_Log__c.Inventory_Position__c</members>
-        <members>Transfer_Log__c.Medication__c</members>
-        <members>Transfer_Log__c.Notes__c</members>
-        <members>Transfer_Log__c.Quantity_Transferred__c</members>
-        <members>Transfer_Log__c.Source_Store__c</members>
-        <members>Transfer_Log__c.Target_Store__c</members>
-        <members>Transfer_Log__c.Transfer_Date__c</members>
-        <members>Transfer_Log__c.Transfer_Status__c</members>
-        <name>CustomField</name>
-    </types>
-
     <!-- ═══ Layouts ══════════════════════════════════════════════════════ -->
     <types>
         <members>Transfer_Log__c-Transfer Log Layout</members>
@@ -85,9 +51,6 @@
         <members>IST_Inventory_Recommendation</members>
         <name>Prompt</name>
     </types>
-
-    <!-- ═══ Post Install Configuration ═══════════════════════════════════ -->
-    <postInstallClass>PostInstallScript</postInstallClass>
 
     <version>66.0</version>
 </Package>

@@ -27,6 +27,7 @@ public with sharing class InterStoreTransferAction {
             label       = 'Confirm Transfer'
             description = 'false = dry-run recommendation only. true = execute the transfer.'
             required    = false
+            defaultValue = 'true'
         )
         public Boolean confirm;
     }
@@ -87,9 +88,11 @@ public with sharing class InterStoreTransferAction {
 
         for (ActionInput input : inputs) {
             Boolean confirmFlag = input.confirm != null ? input.confirm : false;
-
+            System.debug('======>input.confirm='+input.confirm);
+            System.debug('======>input.inventoryPositionId='+input.inventoryPositionId);
             InterStoreTransferService.TransferResult result =
                 InterStoreTransferService.evaluate(input.inventoryPositionId, confirmFlag);
+                        System.debug('======>result='+result);
 
             ActionOutput out = new ActionOutput();
             out.success        = result.success;

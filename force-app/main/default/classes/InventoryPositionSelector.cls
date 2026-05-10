@@ -35,7 +35,7 @@ public with sharing class InventoryPositionSelector {
                    Recommendation__c
             FROM   Inventory_Position__c
             WHERE  Id = :inventoryPositionId
-            WITH   USER_MODE
+            WITH   SECURITY_ENFORCED
             LIMIT  1
         ];
 
@@ -79,7 +79,7 @@ public with sharing class InventoryPositionSelector {
             AND    Store__c      != :excludeStoreId
             AND    Quantity__c   >  :minQty
             AND    Store__r.Is_Active__c = true
-            WITH  USER_MODE
+            WITH  SECURITY_ENFORCED
             ORDER BY Quantity__c DESC
         ];
     }

@@ -72,8 +72,8 @@ public with sharing class InterStoreTransferService {
             target = InventoryPositionSelector.getById(inventoryPositionId);
         } catch (Exception ex) {
             return new TransferResult(false,
-                'Unable to locate Inventory Position. Please refresh and try again. ('
-                + ex.getMessage() + ')');
+                'Unable to locate Inventory Position. Please refresh and try again. ['
+                + ex.getTypeName() + ': ' + ex.getMessage() + ']');
         }
 
         // 2. Compliance gate: Schedule II = hard stop, no source search, no confirm prompt
@@ -113,9 +113,10 @@ public with sharing class InterStoreTransferService {
 
         // 7. Dry-run: write recommendation to record fields, return uhText
         if (!confirm) {
+        system.debug('======>1'+target+'-'+bestSource+'-'+recommendedQty+'-');
             return buildRecommendation(target, bestSource, recommendedQty);
         }
-
+       system.debug('======>2'+target+'-'+bestSource+'-'+recommendedQty+'-');
         // 8. Execute: atomic DML — update inventory + write Transfer_Log__c
         return executeTransfer(target, bestSource, recommendedQty);
     }
@@ -273,7 +274,7 @@ public with sharing class InterStoreTransferService {
                 throw new SecurityException(
                     'Insufficient permissions to create Transfer Log records.');
             }
-
+            
             // Deduct from source
             Inventory_Position__c sourceUpdate = new Inventory_Position__c(
                 Id          = source.Id,
@@ -283,7 +284,7 @@ public with sharing class InterStoreTransferService {
             // Add to target + update both recommendation fields to show completion status
             String completionPreview = 'Transfer completed: ' + qty + ' units from '
                 + source.Store__r.Name + '. See Transfer Log for details.';
-
+           system.debug('======>3'+completionPreview );
             Inventory_Position__c targetUpdate = new Inventory_Position__c(
                 Id                        = target.Id,
                 Quantity__c               = target.Quantity__c + qty,

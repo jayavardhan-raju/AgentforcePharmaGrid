@@ -37,11 +37,12 @@ public class ISTTestDataFactory {
         Id storeId, Id medId, Integer qty, Integer safetyStock, Integer daysToExpiry
     ) {
         Inventory_Position__c inv = new Inventory_Position__c(
-            Store__c        = storeId,
-            Medication__c   = medId,
-            Quantity__c     = qty,
-            Safety_Stock__c = safetyStock,
-            Expiry_Date__c  = Date.today().addDays(daysToExpiry)
+            Store__c          = storeId,
+            Medication__c     = medId,
+            Quantity__c       = qty,
+            Safety_Stock__c   = safetyStock,
+            Expiry_Date__c    = Date.today().addDays(daysToExpiry),
+            Recommendation__c = ''
         );
         insert inv;
         return inv;
