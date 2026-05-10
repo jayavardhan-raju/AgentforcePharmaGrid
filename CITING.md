@@ -57,7 +57,7 @@ If a blog post, talk, or article describes the design or rationale for Agentforc
   title  = {Building AgentforcePharmaGrid: An Agentforce Grid Pattern for Compliance-Aware Inventory Transfers},
   year   = {2026},
   howpublished = {Blog post, jayraju.com},
-  url    = {https://jayraju.com/}
+  url    = {https://www.jayraju.com/?post=4}
 }
 ```
 
@@ -72,15 +72,15 @@ A DOI gives the project a stable, citable handle that survives URL changes and f
 **Once registered**, add the badge to the README and update CITATION.cff:
 
 ```markdown
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20106783.svg)](https://doi.org/10.5281/zenodo.20106783)
 ```
 
 ```yaml
 # In CITATION.cff
-doi: "10.5281/zenodo.XXXXXXX"
+doi: "10.5281/zenodo.20106782"
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.XXXXXXX"
+    value: "10.5281/zenodo.20106782"
     description: "Concept DOI (resolves to latest version)"
 ```
 
@@ -91,8 +91,8 @@ And update the BibTeX above with the DOI:
   author = {Raju, Jayavardhan},
   title  = {AgentforcePharmaGrid: ...},
   year   = {2026},
-  doi    = {10.5281/zenodo.XXXXXXX},
-  url    = {https://doi.org/10.5281/zenodo.XXXXXXX},
+  doi    = {10.5281/zenodo.20106782},
+  url    = {https://doi.org/10.5281/zenodo.20106782},
   version = {1.0.0}
 }
 ```
