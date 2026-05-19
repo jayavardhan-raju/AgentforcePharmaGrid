@@ -63,8 +63,10 @@
         <members>InterStoreTransferService</members>
         <members>InterStoreTransferServiceTest</members>
         <members>InventoryPositionSelector</members>
+        <members>InventoryPositionSelectorTest</members>
         <members>ISTTestDataFactory</members>
         <members>PostInstallScript</members>
+        <members>PostInstallScriptTest</members>
         <name>ApexClass</name>
     </types>
 
@@ -80,10 +82,10 @@
         <name>PermissionSet</name>
     </types>
 
-    <!-- ═══ Prompt Templates ═════════════════════════════════════════════ -->
+    <!-- ═══ Gen AI Prompt Templates ══════════════════════════════════════ -->
     <types>
         <members>IST_Inventory_Recommendation</members>
-        <name>Prompt</name>
+        <name>GenAiPromptTemplate</name>
     </types>
 
     <!-- ═══ Post Install Configuration ═══════════════════════════════════ -->

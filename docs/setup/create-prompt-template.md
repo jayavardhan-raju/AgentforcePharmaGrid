@@ -13,7 +13,10 @@ This guide walks through manual creation of the **IST Inventory Recommendation**
 
 - Salesforce org with Agentforce enabled
 - System Administrator or equivalent permissions
-- Package deployed with `IST_Inventory_Recommendation` PromptTemplate metadata
+- AgentforcePharmaGrid package deployed (the prompt template itself is NOT
+  shipped as metadata — Salesforce's `GenAiPromptTemplate` metadata requires
+  server-generated hash identifiers that can't be hand-authored, so the steps
+  below are the supported way to create it)
 
 ---
 

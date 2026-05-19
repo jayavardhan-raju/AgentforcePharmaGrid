@@ -46,10 +46,10 @@
         <name>PermissionSet</name>
     </types>
 
-    <!-- ═══ Prompt Templates ═════════════════════════════════════════════ -->
+    <!-- ═══ Gen AI Prompt Templates ══════════════════════════════════════ -->
     <types>
         <members>IST_Inventory_Recommendation</members>
-        <name>Prompt</name>
+        <name>GenAiPromptTemplate</name>
     </types>
 
     <version>66.0</version>

@@ -8,14 +8,17 @@
  *   2. Create sample Medication records
  *   3. Create Inventory Position records with various scenarios
  *   4. Assign IST_Ops_User permission set to deployment user
- *   5. Deploy IST Inventory Recommendation prompt template
- * 
+ *   5. Check whether IST Inventory Recommendation prompt template exists
+ *
  * This script implements the InstallHandler interface and is referenced in
  * the package.xml postInstallClass attribute.
- * 
- * NOTE: The IST_Inventory_Recommendation prompt template is deployed as 
- * metadata via package.xml and will be automatically available after 
- * deployment. No manual creation steps are required.
+ *
+ * NOTE: The IST_Inventory_Recommendation prompt template is NOT deployed by
+ * this package. Salesforce's GenAiPromptTemplate metadata requires server-
+ * generated hash identifiers that cannot be authored by hand, so admins must
+ * create it manually in Prompt Builder per
+ * docs/setup/create-prompt-template.md. Step 5 below only logs whether the
+ * template is present; it does not create or deploy it.
  * ============================================================================
  */
 public class PostInstallScript implements InstallHandler {
@@ -43,7 +46,7 @@ public class PostInstallScript implements InstallHandler {
             // Step 4: Assign Permission Set
             assignPermissionSet(context.installerID());
             
-            // Step 5: Verify Prompt Template Deployment
+            // Step 5: Check whether the prompt template has been created manually
             verifyPromptTemplate();
             
             System.debug('========================================');
@@ -379,43 +382,39 @@ public class PostInstallScript implements InstallHandler {
     }
     
     /**
-     * Step 5: Verify Prompt Template Deployment
-     * Confirms that the IST_Inventory_Recommendation prompt template was deployed
+     * Step 5: Check whether the IST_Inventory_Recommendation prompt template
+     * has already been created in Prompt Builder. This template is not
+     * deployed by the package; admins create it manually per
+     * docs/setup/create-prompt-template.md.
      */
     private void verifyPromptTemplate() {
-        System.debug('Step 5: Verifying Prompt Template...');
-        
+        System.debug('Step 5: Checking Prompt Template...');
+
         try {
-            // Query the AiPrompt object to verify deployment
             List<SObject> prompts = Database.query(
                 'SELECT Id, DeveloperName, MasterLabel, ActiveVersion FROM AiPrompt ' +
                 'WHERE DeveloperName = \'IST_Inventory_Recommendation\' LIMIT 1'
             );
-            
+
             if (!prompts.isEmpty()) {
                 SObject prompt = prompts[0];
-                System.debug('✓ Prompt Template deployed successfully:');
+                System.debug('Prompt Template found:');
                 System.debug('  - Name: ' + prompt.get('MasterLabel'));
                 System.debug('  - API Name: ' + prompt.get('DeveloperName'));
                 System.debug('  - Active Version: ' + prompt.get('ActiveVersion'));
                 System.debug('  - ID: ' + prompt.get('Id'));
-                System.debug('');
-                System.debug('The IST Inventory Recommendation prompt template is now available');
-                System.debug('for use in Agentforce agents and will automatically generate');
-                System.debug('inventory recommendations following DEA compliance rules.');
             } else {
-                System.debug(LoggingLevel.WARN, 
-                    'Prompt Template not found. It may be deploying separately via metadata API.');
+                System.debug(LoggingLevel.WARN,
+                    'Prompt Template IST_Inventory_Recommendation not found. ' +
+                    'Create it manually in Prompt Builder per ' +
+                    'docs/setup/create-prompt-template.md before using the grid.');
             }
-            
+
         } catch (Exception e) {
-            // If AiPrompt is not accessible (e.g., Agentforce not enabled in org)
-            System.debug(LoggingLevel.INFO, 
-                'Could not verify Prompt Template: ' + e.getMessage());
-            System.debug(LoggingLevel.INFO, 
+            System.debug(LoggingLevel.INFO,
+                'Could not query AiPrompt: ' + e.getMessage());
+            System.debug(LoggingLevel.INFO,
                 'This is expected if Agentforce is not enabled in this org.');
-            System.debug(LoggingLevel.INFO, 
-                'The prompt template metadata will be available once Agentforce is enabled.');
         }
     }
 }
