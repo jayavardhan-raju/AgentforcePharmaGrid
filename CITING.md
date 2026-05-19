@@ -24,26 +24,27 @@ If the button doesn't appear, confirm `CITATION.cff` is at the repo root on the 
   year      = {2026},
   month     = {5},
   url       = {https://github.com/jayavardhan-raju/AgentforcePharmaGrid},
+  doi       = {10.5281/zenodo.20106783},
   version   = {1.0.0},
-  note      = {Salesforce DX project; Apex, Flow, and Prompt Template assets}
+  note      = {Salesforce DX project; Apex, Flow, and admin-authored GenAiPromptTemplate}
 }
 ```
 
 ### APA (7th Edition)
 
-> Raju, J. (2026). *AgentforcePharmaGrid: Agentforce Grid–driven inter-store inventory transfers with DEA compliance and audit trail for Salesforce* (Version 1.0.0) [Computer software]. GitHub. https://github.com/jayavardhan-raju/AgentforcePharmaGrid
+> Raju, J. (2026). *AgentforcePharmaGrid: Agentforce Grid–driven inter-store inventory transfers with DEA compliance and audit trail for Salesforce* (Version 1.0.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.20106783
 
 ### IEEE
 
-> J. Raju, "AgentforcePharmaGrid: Agentforce Grid–driven inter-store inventory transfers with DEA compliance and audit trail for Salesforce," ver. 1.0.0, 2026. [Online]. Available: https://github.com/jayavardhan-raju/AgentforcePharmaGrid
+> J. Raju, "AgentforcePharmaGrid: Agentforce Grid–driven inter-store inventory transfers with DEA compliance and audit trail for Salesforce," ver. 1.0.0, 2026, doi: 10.5281/zenodo.20106783. [Online]. Available: https://github.com/jayavardhan-raju/AgentforcePharmaGrid
 
 ### Chicago (Author-Date)
 
-> Raju, Jayavardhan. 2026. *AgentforcePharmaGrid: Agentforce Grid–Driven Inter-Store Inventory Transfers with DEA Compliance and Audit Trail for Salesforce*. Version 1.0.0. https://github.com/jayavardhan-raju/AgentforcePharmaGrid.
+> Raju, Jayavardhan. 2026. *AgentforcePharmaGrid: Agentforce Grid–Driven Inter-Store Inventory Transfers with DEA Compliance and Audit Trail for Salesforce*. Version 1.0.0. Zenodo. https://doi.org/10.5281/zenodo.20106783.
 
 ### Plain Text
 
-> Raju, Jayavardhan. AgentforcePharmaGrid: Agentforce Grid–Driven Inter-Store Inventory Transfers with DEA Compliance and Audit Trail for Salesforce. Version 1.0.0. May 2026. GitHub repository: https://github.com/jayavardhan-raju/AgentforcePharmaGrid
+> Raju, Jayavardhan. AgentforcePharmaGrid: Agentforce Grid–Driven Inter-Store Inventory Transfers with DEA Compliance and Audit Trail for Salesforce. Version 1.0.0. May 2026. Zenodo. https://doi.org/10.5281/zenodo.20106783
 
 ---
 
@@ -67,39 +68,21 @@ If a blog post, talk, or article describes the design or rationale for Agentforc
 
 ## DOI
 
-A DOI gives the project a stable, citable handle that survives URL changes and forks. Zenodo issues DOIs for free for any public GitHub repo.
+This project is archived on Zenodo with the **Concept DOI** [10.5281/zenodo.20106783](https://doi.org/10.5281/zenodo.20106783) — it always resolves to the latest released version. Each tagged GitHub release also receives its own version-specific DOI for reproducibility.
 
-**Once registered**, add the badge to the README and update CITATION.cff:
+The DOI is wired into:
+
+- `README.md` (Zenodo badge in the header)
+- `CITATION.cff` (`doi:` field — GitHub's "Cite this repository" button pulls from here)
+- The BibTeX, APA, IEEE, Chicago, and plain-text citations above
+
+If you fork this project and want a fresh DOI for your fork, enable the repo at https://zenodo.org/account/settings/github/ and create a new release. Zenodo issues DOIs for free for any public GitHub repo.
+
+**Badge markdown** (already in the README):
 
 ```markdown
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20106783.svg)](https://doi.org/10.5281/zenodo.20106783)
 ```
-
-```yaml
-# In CITATION.cff
-doi: "10.5281/zenodo.20106782"
-identifiers:
-  - type: doi
-    value: "10.5281/zenodo.20106782"
-    description: "Concept DOI (resolves to latest version)"
-```
-
-And update the BibTeX above with the DOI:
-
-```bibtex
-@software{raju2026agentforcepharmagrid,
-  author = {Raju, Jayavardhan},
-  title  = {AgentforcePharmaGrid: ...},
-  year   = {2026},
-  doi    = {10.5281/zenodo.20106782},
-  url    = {https://doi.org/10.5281/zenodo.20106782},
-  version = {1.0.0}
-}
-```
-
-The **Concept DOI** always resolves to the latest released version — prefer it in long-lived citations. Each tagged release also gets its own version-specific DOI for reproducibility.
-
-See the README's "Registering a DOI via Zenodo" section for one-time setup steps.
 
 ---
 

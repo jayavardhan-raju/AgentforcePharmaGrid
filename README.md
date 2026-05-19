@@ -4,8 +4,9 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Salesforce-00A1E0.svg)](https://www.salesforce.com)
-[![API](https://img.shields.io/badge/API-v65.0-1798c1.svg)](https://developer.salesforce.com/docs/atlas.en-us.api.meta/api/)
+[![API](https://img.shields.io/badge/API-v66.0-1798c1.svg)](https://developer.salesforce.com/docs/atlas.en-us.api.meta/api/)
 [![Agentforce](https://img.shields.io/badge/Agentforce-Grid-9B59B6.svg)](https://www.salesforce.com/agentforce/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20106783.svg)](https://doi.org/10.5281/zenodo.20106783)
 
 ---
 
@@ -13,7 +14,7 @@
 
 AgentforcePharmaGrid is a Salesforce-native solution that lets a pharmacy ops team find low-stock medications across stores, get an Agentforce-generated recommendation per row, and execute an inter-store transfer with one click — all from an Agentforce Grid component.
 
-The core logic lives in three Apex classes (`InterStoreTransferService`, `InterStoreTransferAction`, `InventoryPositionSelector`) plus a Flow (`Execute_Inter_Store_Transfer`) and a Prompt Template (`IST_Inventory_Recommendation`). There is no LWC, no middleware, and no external service. The Grid's per-row "Transfer/Optimize" button invokes the Flow directly, the Flow calls the Apex invocable action, and the action returns a structured `uhText` that surfaces back into the Grid conversation.
+The core logic lives in three Apex classes (`InterStoreTransferService`, `InterStoreTransferAction`, `InventoryPositionSelector`) plus a Flow (`Execute_Inter_Store_Transfer`). There is no LWC, no middleware, and no external service. The Grid's per-row "Transfer/Optimize" button invokes the Flow directly, the Flow calls the Apex invocable action, and the action returns a structured `uhText` that surfaces back into the Grid conversation. The per-row recommendation column is rendered by a `GenAiPromptTemplate` called `IST_Inventory_Recommendation` that an admin creates manually in Prompt Builder — see [docs/setup/create-prompt-template.md](docs/setup/create-prompt-template.md). The package does **not** ship the prompt template as metadata because Salesforce's `GenAiPromptTemplate` type requires server-generated hash identifiers that cannot be authored by hand.
 
 What makes this project different from a generic transfer utility:
 
@@ -30,7 +31,8 @@ What makes this project different from a generic transfer utility:
 - **Capped transfer math** — `calculateTransferQty()` proposes 50% of the source's surplus above its own safety stock, then caps the result at exactly what the target needs to reach safety stock.
 - **Atomic execution with rollback** — `executeTransfer()` deducts from source, adds to target, inserts a `Completed` `Transfer_Log__c`, all inside a `Database.setSavepoint()`/`rollback` boundary with `Security.stripInaccessible(AccessType.UPDATABLE, ...)` for FLS enforcement.
 - **Distributor-fallback messaging** — when no eligible source is found, the action returns a `uhText` instructing the ops user to place an emergency order with the primary distributor and contact their district manager.
-- **Prompt-template recommendations** — `IST_Inventory_Recommendation` renders a 1–2 sentence per-row recommendation in the Grid using inventory record fields, with rules for Schedule II, critical stock, near-expiry, and healthy stock states.
+- **Prompt-template recommendations** — `IST_Inventory_Recommendation` (a `GenAiPromptTemplate` created manually in Prompt Builder) renders a 1–2 sentence per-row recommendation in the Grid using inventory record fields, with rules for Schedule II, critical stock, near-expiry, and healthy stock states. `PostInstallScript.verifyPromptTemplate()` checks for its existence at install time and logs a `WARN` debug if it is not yet created.
+- **Full Apex test coverage** — four test classes (`InterStoreTransferServiceTest`, `InterStoreTransferActionTest`, `InventoryPositionSelectorTest`, `PostInstallScriptTest`) cover the happy path, Schedule II block, cold-chain mismatch, near-expiry exclusion, DEA-registration filter, distributor fallback, savepoint rollback, and post-install seeding, so the package can be deployed to production with `--test-level RunLocalTests`.
 
 ---
 
@@ -47,7 +49,8 @@ What makes this project different from a generic transfer utility:
         +-------------------------+  +---------------------------+
         |   IST_Inventory_        |  |  Execute_Inter_Store_     |
         |   Recommendation        |  |  Transfer (Flow)          |
-        |   (Prompt Template)     |  |                           |
+        |   GenAiPromptTemplate   |  |                           |
+        |   (admin-authored)      |  |                           |
         +-------------------------+  +-------------+-------------+
                                                     |
                                                     v
@@ -80,13 +83,15 @@ What makes this project different from a generic transfer utility:
 | Layer | Class / Asset | Responsibility |
 |---|---|---|
 | UI | Agentforce Grid (record page on `Inventory_Position__c`) | Surfaces critical stock rows; renders per-row prompt output; exposes Transfer/Optimize button. |
-| AI | `IST_Inventory_Recommendation` (Prompt Template) | Generates 1–2 sentence row-level recommendation, ≤150 chars, following DEA / stock-level rules. |
+| AI | `IST_Inventory_Recommendation` (`GenAiPromptTemplate`, **admin-authored**, not packaged) | Generates 1–2 sentence row-level recommendation, ≤150 chars, following DEA / stock-level rules. See [docs/setup/create-prompt-template.md](docs/setup/create-prompt-template.md). |
 | Orchestration | `Execute_Inter_Store_Transfer` (Flow) | Triggered by the Grid button; passes `inventoryPositionId` to the invocable Apex action. |
 | Action | `InterStoreTransferAction.execute()` | Invocable entry point. Wraps service result in `ActionOutput` for the agent to consume. |
 | Service | `InterStoreTransferService.evaluate()` | All business rules: compliance gate, source selection, qty calc, dry-run vs execute branching, atomic DML. |
 | Selector | `InventoryPositionSelector` | All SOQL. `getById()` and `findSurplusSources()`. No DML, no business logic. |
 | Data | `Pharmacy_Store__c`, `Medication__c`, `Inventory_Position__c`, `Transfer_Log__c` | Domain model. `Transfer_Log__c` is the immutable audit object. |
-| Install | `PostInstallScript` (InstallHandler) | Seeds 6 stores, 6 medications, 14 inventory positions; assigns `IST_Ops_User`; verifies prompt template. |
+| Install | `PostInstallScript` (InstallHandler) | Seeds 6 stores, 6 medications, 14 inventory positions; assigns `IST_Ops_User`; verifies prompt template via `AiPrompt` query (logs `WARN` if missing — the template is admin-authored, not packaged). |
+| Tests | `InterStoreTransferServiceTest` (11 methods), `InterStoreTransferActionTest` (7 methods), `InventoryPositionSelectorTest` (10 methods), `PostInstallScriptTest` (11 methods) | Cover every code path including compliance block, cold-chain filter, expiry filter, savepoint rollback, and post-install seeding. |
+| Test Factory | `ISTTestDataFactory` (`@IsTest`) | `createStore`, `createMedication`, `createInventory` helpers shared by all four test classes. |
 
 ---
 
@@ -211,9 +216,9 @@ sf apex run --file scripts/apex/TC1_HappyPath_ColdChainTransfer.apex --target-or
 
 ### Prerequisites
 
-- Salesforce org with **Agentforce enabled** (Prompt Template requires the `AiPrompt` SObject)
+- Salesforce org with **Agentforce enabled** (the `IST_Inventory_Recommendation` `GenAiPromptTemplate` requires the `AiPrompt` SObject; `PostInstallScript.verifyPromptTemplate()` only logs a `WARN` if Agentforce is missing — it does not fail the install)
 - Salesforce CLI (`sf`) installed and authenticated (`sf org login web`)
-- API v65.0 (project's declared API version)
+- API v66.0 (project's declared `sourceApiVersion`)
 
 ### Deploy
 
@@ -230,14 +235,15 @@ sf apex run --file scripts/apex/TC1_HappyPath_ColdChainTransfer.apex --target-or
 
 ### Post-deploy steps
 
-1. Verify the prompt template `IST_Inventory_Recommendation` is published (Setup → Prompt Builder).
+1. **Create the prompt template manually.** The `IST_Inventory_Recommendation` `GenAiPromptTemplate` is **not** shipped with the package. Follow [docs/setup/create-prompt-template.md](docs/setup/create-prompt-template.md) to author it in Prompt Builder. `PostInstallScript.verifyPromptTemplate()` will log a `WARN` until the template exists.
 2. Activate the Flow `Execute_Inter_Store_Transfer` if not already active.
 3. On the `Inventory_Position__c` record page (Lightning App Builder), add the Agentforce Grid component and bind:
-   - **Recommendation column** → `IST_Inventory_Recommendation` prompt template
+   - **Source list view** → `Inventory_Transfer_Ops`
+   - **Recommendation column** → `IST_Inventory_Recommendation` prompt template (display field `Recommendation_Preview__c`)
    - **Transfer/Optimize button** → `Execute_Inter_Store_Transfer` Flow with input `{Salesforce.Id}` mapped to `inventoryPositionId`
 4. Confirm `IST_Ops_User` permission set is assigned to ops users.
 
-If you installed via a managed package, `PostInstallScript.onInstall()` does steps 1, 4, and seeds demo data automatically.
+If you installed via a managed package, `PostInstallScript.onInstall()` seeds demo data, assigns the permission set, and checks the prompt template (step 1 still requires manual creation in Prompt Builder).
 
 ---
 
@@ -246,25 +252,29 @@ If you installed via a managed package, `PostInstallScript.onInstall()` does ste
 ```
 force-app/main/default/
 ├── classes/
-│   ├── InterStoreTransferService.cls       Core service with all business rules
-│   ├── InterStoreTransferAction.cls        @InvocableMethod entry for Flow/Agent
-│   ├── InventoryPositionSelector.cls       SOQL-only selector
-│   ├── ISTTestDataFactory.cls              @IsTest data factory (no test class yet)
-│   └── PostInstallScript.cls               InstallHandler — seed + permset
+│   ├── InterStoreTransferService.cls            Core service with all business rules
+│   ├── InterStoreTransferServiceTest.cls        11 test methods covering every code path
+│   ├── InterStoreTransferAction.cls             @InvocableMethod entry for Flow/Agent
+│   ├── InterStoreTransferActionTest.cls         7 test methods (dry-run, execute, defaults, bulk)
+│   ├── InventoryPositionSelector.cls            SOQL-only selector
+│   ├── InventoryPositionSelectorTest.cls        10 test methods (getById + findSurplusSources)
+│   ├── ISTTestDataFactory.cls                   @IsTest shared data builder
+│   ├── PostInstallScript.cls                    InstallHandler — seed + permset + prompt-check
+│   └── PostInstallScriptTest.cls                11 test methods for the install handler
 ├── objects/
 │   ├── Pharmacy_Store__c/
 │   ├── Medication__c/
-│   ├── Inventory_Position__c/
+│   ├── Inventory_Position__c/                   (incl. listViews/Inventory_Transfer_Ops)
 │   └── Transfer_Log__c/
 ├── flows/
 │   └── Execute_Inter_Store_Transfer.flow-meta.xml
-├── prompts/
-│   └── IST_Inventory_Recommendation.prompt-meta.xml
 ├── permissionsets/
 │   └── IST_Ops_User.permissionset-meta.xml
 └── layouts/
     └── Transfer_Log__c-Transfer Log Layout.layout-meta.xml
 ```
+
+The `IST_Inventory_Recommendation` prompt template is **not** part of `force-app/`. It is created manually in Prompt Builder per [docs/setup/create-prompt-template.md](docs/setup/create-prompt-template.md). The `manifest/destructiveChanges.xml` file *does* reference it under `GenAiPromptTemplate` so it gets cleaned up during a destructive deploy if it exists in the org.
 
 ---
 
@@ -272,10 +282,11 @@ force-app/main/default/
 
 Documenting these honestly so contributors know what's missing:
 
-- **No Apex test class yet.** `ISTTestDataFactory` is `@IsTest` and provides `createStore`, `createMedication`, `createInventory` helpers, but there is no `*Test.cls` consumer. To deploy to a production org, you'll need ≥75% coverage; expect to write `InterStoreTransferServiceTest` covering the happy path, Schedule II block, no-eligible-source fallback, near-expiry exclusion, cold-chain mismatch, and savepoint rollback paths.
+- **Prompt template is not metadata-managed.** `IST_Inventory_Recommendation` is a `GenAiPromptTemplate`, and Salesforce requires server-generated hash identifiers for that type. The template lives in the org, not in `force-app/`, and must be created manually per [docs/setup/create-prompt-template.md](docs/setup/create-prompt-template.md). This means it cannot be versioned in source control or promoted between environments via a normal deploy.
 - **No LWC.** The UI is the standard Agentforce Grid component on the record page — there is no custom Lightning Web Component in this repo.
 - **`System.debug()` left in production code.** `InterStoreTransferService` and `InterStoreTransferAction` both have `System.debug('======>...')` calls that should be removed or gated behind a feature flag before a real production deploy.
 - **`Recommendation__c` not cleared on execution.** After `executeTransfer()`, only `Recommendation_Preview__c` is overwritten with the completion message; the long-form `Recommendation__c` still holds the pre-execution dry-run text.
+- **Flow does not forward `confirm` to the action.** `Execute_Inter_Store_Transfer.flow-meta.xml` only maps `inventoryPositionId`. The action's null-coalesce defaults `confirm` to `false`, so the Grid button always invokes the dry-run path; execution requires the agent to call the action a second time with `confirm = true`.
 
 ---
 
@@ -294,11 +305,12 @@ GitHub provides a **"Cite this repository"** button in the right sidebar that re
                Transfers with DEA Compliance and Audit Trail for Salesforce},
   year      = {2026},
   url       = {https://github.com/jayavardhan-raju/AgentforcePharmaGrid},
-  version   = {1.0.0}
+  version   = {1.0.0},
+  doi       = {10.5281/zenodo.20106783}
 }
 ```
 
-A DOI can be registered through Zenodo — see [CITING.md](CITING.md) for the one-time setup.
+This project is archived on Zenodo at [10.5281/zenodo.20106783](https://doi.org/10.5281/zenodo.20106783) — the **Concept DOI** that always resolves to the latest release. See [CITING.md](CITING.md) for APA, IEEE, and Chicago formats.
 
 ---
 

@@ -161,9 +161,10 @@ Once created, test the prompt template with the Agentforce Grid:
 
 ### Template Not Appearing in Grid
 
-- Verify the template is **Active**
-- Check that the Agentforce agent is configured to use this template
-- Ensure package deployment included the PromptTemplate metadata
+- Verify the template is **Active** (`ActiveVersion = 1` in the `AiPrompt` row)
+- Check that the Agentforce Grid component is configured to use `IST_Inventory_Recommendation` as the Recommendation column source
+- Run `SELECT DeveloperName, ActiveVersion FROM AiPrompt WHERE DeveloperName = 'IST_Inventory_Recommendation'` to confirm the template exists
+- Remember: the template is **not** in `force-app/` — re-running `sf project deploy` will not create it
 
 ### Merge Fields Not Resolving
 
@@ -181,7 +182,8 @@ Once created, test the prompt template with the Agentforce Grid:
 
 ## Related Documentation
 
-- [Agentforce Configuration](../architecture/overview.md)
-- [Data Model Reference](../architecture/data-model.md)
-- [Inventory Position Record](../architecture/data-model.md#inventory_positionc)
+- [Agentforce Grid Integration](../api-reference/agentforce-grid.html) — how the Grid binds this template to the Recommendation column
+- [Architecture Overview](../architecture/overview.html) — where the prompt template sits in the layered architecture
+- [Data Model Reference](../architecture/data-model.html) — the `Inventory_Position__c` fields the system prompt merges
+- [Deployment Guide](deployment.html) — runs `PostInstallScript.verifyPromptTemplate()` after deploy and logs a `WARN` until this template exists
 

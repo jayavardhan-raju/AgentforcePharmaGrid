@@ -34,9 +34,8 @@ keywords:
   - audit-trail
   - invocable-action
   - service-selector-pattern
-# When you register a DOI via Zenodo, uncomment and fill in:
-# doi: "10.5281/zenodo.20106782"
-# identifiers:
-#   - type: doi
-#     value: "10.5281/zenodo.20106782"
-#     description: "Concept DOI (resolves to latest version)"
+doi: "10.5281/zenodo.20106783"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.20106783"
+    description: "Concept DOI (resolves to latest version)"

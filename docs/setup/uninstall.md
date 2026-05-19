@@ -12,12 +12,12 @@ This guide provides step-by-step instructions for completely removing the Agentf
 ## ⚠️ Important Warning
 
 **Uninstalling will permanently delete:**
-- All custom objects (Pharmacy_Store__c, Medication__c, Inventory_Position__c, Transfer_Log__c)
+- All custom objects (`Pharmacy_Store__c`, `Medication__c`, `Inventory_Position__c`, `Transfer_Log__c`)
 - All records in these objects (including any production data you've created)
-- All Apex classes, triggers, and test classes
-- The Execute_Inter_Store_Transfer flow
-- The IST_Ops_User permission set
-- The IST Inventory Recommendation prompt template
+- All Apex classes and test classes (`InterStoreTransferService` + Test, `InterStoreTransferAction` + Test, `InventoryPositionSelector` + Test, `PostInstallScript` + Test, `ISTTestDataFactory`)
+- The `Execute_Inter_Store_Transfer` flow
+- The `IST_Ops_User` permission set
+- The `IST_Inventory_Recommendation` `GenAiPromptTemplate` — included in `destructiveChanges.xml` so the destructive deploy removes the admin-authored template if it exists in the org
 - All page layouts and list views
 
 **Before proceeding, ensure you have:**
@@ -70,7 +70,7 @@ sf apex run --file scripts/uninstall/1_Delete_Sample_Data.apex --target-org <you
 Starting Sample Data Deletion
 ========================================
 Deleted 0 Transfer Log records
-Deleted 17 Inventory Position records
+Deleted 14 Inventory Position records
 Deleted 6 Medication records
 Deleted 6 Pharmacy Store records
 ========================================
@@ -78,6 +78,8 @@ Sample Data Deletion Complete
 ========================================
 Next Step: Run script 2_Remove_Permission_Sets.apex
 ```
+
+> Counts assume the org has just the `PostInstallScript`-seeded data. If you've created additional records (or run the TC demo scripts), the numbers will be higher. The script deletes **all** records on these objects, so back up first if you have production data.
 
 ### ⚠️ Important Notes
 
@@ -147,17 +149,17 @@ sf project deploy start \
 
 ### What This Deletes
 
-The destructiveChanges.xml file removes:
+The `destructiveChanges.xml` file removes:
 
 | Metadata Type | Components Deleted |
 |--------------|-------------------|
-| **Custom Objects** | Pharmacy_Store__c, Medication__c, Inventory_Position__c, Transfer_Log__c |
-| **Apex Classes** | InterStoreTransferAction, InterStoreTransferService, InventoryPositionSelector, ISTTestDataFactory, PostInstallScript, and their test classes |
-| **Flows** | Execute_Inter_Store_Transfer |
-| **Permission Sets** | IST_Ops_User |
-| **Prompt Templates** | IST_Inventory_Recommendation |
-| **Layouts** | Transfer_Log__c-Transfer Log Layout |
-| **List Views** | Inventory_Position__c.Inventory_Transfer_Ops |
+| **Custom Objects** | `Pharmacy_Store__c`, `Medication__c`, `Inventory_Position__c`, `Transfer_Log__c` |
+| **Apex Classes** | `InterStoreTransferAction` + Test, `InterStoreTransferService` + Test, `InventoryPositionSelector`, `ISTTestDataFactory`, `PostInstallScript` |
+| **Flows** | `Execute_Inter_Store_Transfer` |
+| **Permission Sets** | `IST_Ops_User` |
+| **Gen AI Prompt Templates** | `IST_Inventory_Recommendation` (admin-authored — removed only if it exists in the org) |
+| **Layouts** | `Transfer_Log__c-Transfer Log Layout` |
+| **List Views** | `Inventory_Position__c.Inventory_Transfer_Ops` |
 
 ### Expected Output
 
@@ -165,26 +167,28 @@ The destructiveChanges.xml file removes:
 Deploying metadata...
 [==========] 100% (done)
 
-Component Deletions (17):
+Component Deletions:
   • CustomObject: Pharmacy_Store__c
   • CustomObject: Medication__c
   • CustomObject: Inventory_Position__c
   • CustomObject: Transfer_Log__c
   • ApexClass: InterStoreTransferAction
+  • ApexClass: InterStoreTransferActionTest
   • ApexClass: InterStoreTransferService
+  • ApexClass: InterStoreTransferServiceTest
   • ApexClass: InventoryPositionSelector
   • ApexClass: ISTTestDataFactory
   • ApexClass: PostInstallScript
-  • ApexClass: InterStoreTransferActionTest
-  • ApexClass: InterStoreTransferServiceTest
   • Flow: Execute_Inter_Store_Transfer
   • PermissionSet: IST_Ops_User
-  • Prompt: IST_Inventory_Recommendation
+  • GenAiPromptTemplate: IST_Inventory_Recommendation
   • Layout: Transfer_Log__c-Transfer Log Layout
   • ListView: Inventory_Position__c.Inventory_Transfer_Ops
 
 Deploy Status: Succeeded
 ```
+
+> **Note:** the current `destructiveChanges.xml` does **not** list `InventoryPositionSelectorTest` or `PostInstallScriptTest` even though they exist in `force-app/`. If those test classes are present in your target org and you want a clean uninstall, delete them manually in Setup or extend the manifest before deploying.
 
 ---
 
@@ -217,9 +221,11 @@ In Setup:
 ### 4. Verify Prompt Template Is Removed
 
 In Setup:
-1. Navigate to **App Launcher > Prompt Templates**
+1. Navigate to **App Launcher > Prompt Templates** (or **Setup > Einstein > Prompt Builder**)
 2. Search for "IST Inventory Recommendation"
 3. Confirm template doesn't exist
+
+> The prompt template was admin-authored, not packaged. The destructive deploy includes it under `GenAiPromptTemplate`, but if the template was never created in this org (e.g. Agentforce was not enabled), the deploy will skip it without failing — there is nothing to remove.
 
 ---
 
@@ -269,13 +275,14 @@ If you need to reinstall the package after uninstallation:
    ```
 
 2. **Post-Install Script Will Automatically:**
-   - Create sample data
-   - Assign permission set
-   - Deploy prompt template
+   - Create sample data (6 stores, 6 medications, 14 inventory positions)
+   - Assign the `IST_Ops_User` permission set to the installer
+   - **Check** for the `IST_Inventory_Recommendation` prompt template (logs `WARN` if missing — re-author it per [Create the Prompt Template](create-prompt-template.html))
 
 3. **Or Manually Create Data:**
-   - Run data creation scripts individually
+   - Run the demo TC scripts under `scripts/apex/` individually
    - Assign permission sets manually
+   - Re-author the prompt template in Prompt Builder
 
 ---
 
@@ -315,8 +322,9 @@ rm -rf force-app/main/default/objects/Inventory_Position__c
 rm -rf force-app/main/default/objects/Transfer_Log__c
 rm -rf force-app/main/default/flows/Execute_Inter_Store_Transfer*
 rm -rf force-app/main/default/permissionsets/IST_Ops_User*
-rm -rf force-app/main/default/prompts/IST_Inventory_Recommendation*
 rm -rf force-app/main/default/layouts/Transfer_Log__c*
+# Note: the IST_Inventory_Recommendation prompt template is NOT in force-app/
+# — it was admin-authored in Prompt Builder, not packaged as metadata.
 
 # Remove scripts
 rm -rf scripts/data

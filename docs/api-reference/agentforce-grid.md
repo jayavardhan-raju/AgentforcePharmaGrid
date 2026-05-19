@@ -37,15 +37,17 @@ Defined in `objects/Inventory_Position__c/listViews/Inventory_Transfer_Ops.listV
 
 ## Prompt Template: `IST_Inventory_Recommendation`
 
-Defined in `prompts/IST_Inventory_Recommendation.prompt-meta.xml`.
+**Authored manually in Prompt Builder — not shipped as package metadata.** Salesforce's `GenAiPromptTemplate` type requires server-generated hash identifiers that cannot be hand-written, so the template was removed from `force-app/` in May 2026 and is now created in the target org by an admin following [Create the Prompt Template](../setup/create-prompt-template.html). `PostInstallScript.verifyPromptTemplate()` queries `AiPrompt` after install and logs `LoggingLevel.WARN` if the developer name is missing.
 
-| Property | Value |
+| Property | Value (after manual creation) |
 |---|---|
-| `developerName` | `IST_Inventory_Recommendation` |
-| `masterLabel` | `IST Inventory Recommendation` |
-| `activeVersion` | `1` |
+| Type | `GenAiPromptTemplate` |
+| `DeveloperName` | `IST_Inventory_Recommendation` |
+| `MasterLabel` | `IST Inventory Recommendation` |
+| `ActiveVersion` | `1` (after Activate is clicked in Prompt Builder) |
+| Input | `$Input:Inventory_Position__c` (single record input) |
 
-The active version `IST_Inventory_Recommendation_v1` (published) takes a single input — `$Input:Inventory_Position__c` — and merges these record fields:
+The active version takes a single input — `$Input:Inventory_Position__c` — and merges these record fields:
 
 - `Id`, `Store__r.Name`, `Medication__r.Name`
 - `Medication__r.DEA_Schedule__c`, `Medication__r.Cold_Chain_Required__c`
@@ -82,9 +84,14 @@ Defined in `flows/Execute_Inter_Store_Transfer.flow-meta.xml`.
 | Name | Type | Input | Output | Notes |
 |---|---|---|---|---|
 | `inventoryPositionId` | String | ✓ | — | Bound to `{Salesforce.Id}` from the Grid row |
-| `confirm` | Boolean | ✓ | — | Passed through to the Apex action |
+| `confirm` | Boolean | ✓ | — | Input variable on the Flow definition, but **not** mapped on the action call (see note below) |
 | `recommendedQty` | Number(2) | — | ✓ | Returned to caller (currently unused by the Grid) |
 | `refreshView` | Boolean | — | ✓ | Set to `true` after the action call to trigger record-page refresh |
+| `sourceStoreId` | String | — | ✓ | Reserved for future use; not currently surfaced |
+| `sourceStoreName` | String | — | ✓ | Reserved for future use; not currently surfaced |
+| `success` | Boolean | — | ✓ | Mirrors `ActionOutput.success` |
+| `transferLogId` | String | — | ✓ | Mirrors `ActionOutput.transferLogId` |
+| `uhText` | String | — | ✓ | Mirrors `ActionOutput.uhText` |
 
 ### Steps
 

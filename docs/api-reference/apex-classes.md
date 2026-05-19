@@ -15,7 +15,11 @@ ApexDox-style reference for every class in `force-app/main/default/classes/`.
 | [`InterStoreTransferAction`](#interstoretransferaction) | `with sharing` | `@InvocableMethod` wrapper for Flow / Agentforce |
 | [`InventoryPositionSelector`](#inventorypositionselector) | `with sharing` | All SOQL queries; no DML, no business logic |
 | [`PostInstallScript`](#postinstallscript) | (none declared) | `InstallHandler` for post-package-install setup |
-| [`ISTTestDataFactory`](#isttestdatafactory) | `@IsTest` | Test data builder helpers (no test class consumes it yet) |
+| [`ISTTestDataFactory`](#isttestdatafactory) | `@IsTest` | Test data builder helpers shared by every test class |
+| [`InterStoreTransferServiceTest`](#interstoretransferservicetest) | `@IsTest private` | 11 methods covering compliance, qty math, FLS, rollback |
+| [`InterStoreTransferActionTest`](#interstoretransferactiontest) | `@IsTest private` | 7 methods covering dry-run, execute, default `confirm`, bulk input |
+| [`InventoryPositionSelectorTest`](#inventorypositionselectortest) | `@IsTest private` | 10 methods covering `getById`, `findSurplusSources`, security_enforced |
+| [`PostInstallScriptTest`](#postinstallscripttest) | `@IsTest private` | 11 methods covering install steps, permset assignment, prompt-template verification |
 
 ---
 
@@ -213,7 +217,12 @@ Five steps, wrapped in a top-level `try / catch` that swallows exceptions to avo
 2. **`createMedications()`** — inserts 6 `Medication__c` records: `Mounjaro 5mg`, `Ozempic 1mg` (cold-chain), `Adderall XR 30mg` (Schedule II), `Xanax 0.5mg` (Schedule IV), `Lisinopril 10mg`, `Amoxicillin 500mg`.
 3. **`createInventoryPositions()`** — inserts 14 `Inventory_Position__c` records covering 6 demo scenarios (happy path, Schedule II block, distributor fallback, near-expiry exclusion, Schedule IV allowed, multiple healthy sources).
 4. **`assignPermissionSet(Id userId)`** — assigns `IST_Ops_User` to the installer; idempotent (skips if already assigned).
-5. **`verifyPromptTemplate()`** — uses `Database.query` to verify `IST_Inventory_Recommendation` exists in `AiPrompt`. Logs at `LoggingLevel.INFO` if Agentforce is not enabled in the org.
+5. **`verifyPromptTemplate()`** — uses dynamic SOQL (`Database.query`) to check whether `IST_Inventory_Recommendation` exists as an `AiPrompt` row. Behavior:
+   - **Found:** debugs `Name`, `DeveloperName`, `ActiveVersion`, and `Id` at default level.
+   - **Not found:** debugs a `LoggingLevel.WARN` message instructing the admin to create the template manually per [Create the Prompt Template](../setup/create-prompt-template.html). The template is **not deployed by this package** — `GenAiPromptTemplate` metadata requires server-generated hash identifiers that cannot be authored by hand.
+   - **Query throws:** debugs `LoggingLevel.INFO` ("expected if Agentforce is not enabled"); the install continues.
+
+> The install handler intentionally swallows all exceptions in `onInstall`, so neither a missing prompt template nor a permission-set failure can block a package install. Admins should read the post-install debug log to confirm every step succeeded.
 
 ---
 
@@ -221,7 +230,7 @@ Five steps, wrapped in a top-level `try / catch` that swallows exceptions to avo
 
 `@IsTest public class ISTTestDataFactory`
 
-Shared test data factory for IST test classes. Three static helpers:
+Shared test data factory consumed by every test class in this project. Three static helpers:
 
 | Method | Inserts | Notes |
 |---|---|---|
@@ -229,4 +238,99 @@ Shared test data factory for IST test classes. Three static helpers:
 | `createMedication(String name, String deaSchedule, Boolean coldChain)` | `Medication__c` | NDC auto-generated as `NDC-<name with spaces dashed>-001` |
 | `createInventory(Id storeId, Id medId, Integer qty, Integer safetyStock, Integer daysToExpiry)` | `Inventory_Position__c` | `Expiry_Date__c = Date.today().addDays(daysToExpiry)`; `Recommendation__c = ''` |
 
-> **Heads up:** as of this release there is **no test class** that consumes the factory. To deploy to a production org you need ≥75% Apex coverage — see [Testing Guide](../setup/testing.html) for the test scenarios that need to be authored.
+---
+
+## `InterStoreTransferServiceTest`
+
+`@IsTest private class InterStoreTransferServiceTest`
+
+Comprehensive coverage of `InterStoreTransferService.evaluate()` — every code path, every eligibility filter, every error branch. Uses `@TestSetup` to materialise five stores (good, no-cold-chain, no-DEA, inactive) and four medications (Schedule II, cold-chain, Schedule IV, standard).
+
+| Test method | Asserts |
+|---|---|
+| `testScheduleIIComplianceBlock` | `result.success == false`; `uhText` contains the Schedule II / DEA Form 222 message; a `Blocked` `Transfer_Log__c` is written |
+| `testSuccessfulDryRun` | `result.success == true`; `recommendedQty` matches the qty-math formula; `Recommendation__c` and `Recommendation_Preview__c` are populated; **no** `Transfer_Log__c` written |
+| `testSuccessfulExecution` | Source quantity decremented, target quantity incremented, `Completed` `Transfer_Log__c` written with full `Notes__c` |
+| `testColdChainFiltering` | Cold-chain medication with only non-cold-chain source → distributor-fallback `uhText` |
+| `testDEARegistrationFiltering` | Source with blank `DEA_Registration__c` → distributor fallback |
+| `testExpiryDateFiltering` | Source with `Expiry_Date__c < today + 30` → distributor fallback |
+| `testQuantityCalculation` | Validates `min(sourceSurplus × 50%, targetNeed)` cap |
+| `testInvalidInventoryPositionId` | Bad id returns `success = false` with graceful `uhText` |
+| `testBestSourceSelection` | Multiple candidates → highest-quantity eligible one wins (pre-sorted by `Quantity__c DESC`) |
+| `testPreviewTextTruncation` | Long `uhText` truncated to `PREVIEW_MAX_LENGTH − 3` and suffixed with `...` |
+| `testNoSuitableSource` (in action suite) | Empty candidate list → distributor fallback |
+
+---
+
+## `InterStoreTransferActionTest`
+
+`@IsTest private class InterStoreTransferActionTest`
+
+Covers the `@InvocableMethod` wrapper. Validates that `confirm` defaulting, multi-input bulk shape, and result mapping all behave correctly.
+
+| Test method | Asserts |
+|---|---|
+| `testDryRunAction` | `confirm = false` returns `success = true`, `uhText` ending in *"Shall I proceed?"*, populated `sourceStoreId` / `sourceStoreName` / `recommendedQty` |
+| `testExecutionAction` | `confirm = true` returns a populated `transferLogId` |
+| `testDefaultConfirmValue` | When `input.confirm` is `null`, the action falls back to `false` (dry-run) per the null-coalesce in `execute()` |
+| `testScheduleIIThroughAction` | Schedule II input → `success = false`; `uhText` matches the service's compliance message |
+| `testMultipleInputs` | List of two `ActionInput`s returns two `ActionOutput`s in the same order |
+| `testInvalidIdThroughAction` | Bad id surfaces through the action with `success = false` and a graceful `uhText` |
+| `testNoSuitableSourceThroughAction` | Distributor fallback surfaces through the action |
+
+---
+
+## `InventoryPositionSelectorTest`
+
+`@IsTest private class InventoryPositionSelectorTest`
+
+Direct unit tests on the selector. Covers exception paths the service tests cannot reach indirectly.
+
+| Test method | Asserts |
+|---|---|
+| `testGetByIdSuccess` | Returns a fully hydrated row with all `Store__r.*` and `Medication__r.*` fields |
+| `testGetByIdNullId` | Throws `IllegalArgumentException` for a null id |
+| `testGetByIdNonExistent` | Throws `QueryException` for a non-existent id |
+| `testFindSurplusSourcesMultiple` | Returns multiple candidates ordered by `Quantity__c DESC` |
+| `testFindSurplusSourcesNone` | Returns empty list when no surplus exists |
+| `testFindSurplusSourcesInactiveExcluded` | Filters out `Is_Active__c = false` stores |
+| `testFindSurplusSourcesMinimumFilter` | Honors the `minimumSurplus` argument |
+| `testFindSurplusSourcesNullMinimum` | Defaults `minimumSurplus` to 1 when null |
+| `testFindSurplusSourcesAllFields` | All selected fields are present on the returned rows |
+| `testSecurityEnforced` | `WITH SECURITY_ENFORCED` is honored under a restricted user context |
+
+---
+
+## `PostInstallScriptTest`
+
+`@IsTest private class PostInstallScriptTest`
+
+Exercises every step of the `InstallHandler`. Because `onInstall` is hard to invoke directly, several tests refactor the verification logic by invoking the public install handler with a stubbed `InstallContext`.
+
+| Test method | Asserts |
+|---|---|
+| `testSuccessfulPostInstall` | All six stores, six medications, and 14 inventory positions are created end-to-end |
+| `testStoreCreation` | Validates districts, lat/lng, cold-chain flags, DEA registrations, and `CVS Palo Alto (Closed)` is inactive |
+| `testMedicationCreation` | Validates schedules, NDCs, and cold-chain flags for all six demo medications |
+| `testInventoryPositionCreation` | Validates the six scenario buckets (happy path, Schedule II, fallback, near-expiry, Schedule IV, multi-healthy) |
+| `testPermissionSetAssignment` | New assignment created for the install user |
+| `testDuplicatePermissionSetAssignment` | Idempotent on re-run; no duplicate assignment |
+| `testVersionLogging` | The `context.previousVersion()` value is logged |
+| `testPromptTemplateVerification` | `verifyPromptTemplate()` runs without throwing whether or not the template exists |
+| `testErrorHandling` | Failures inside `onInstall` are caught and logged at `LoggingLevel.ERROR` so the install never bubbles an exception to the platform |
+| `testAllInventoryScenarios` | Asserts each demo scenario's quantity / safety-stock / expiry pattern |
+
+---
+
+## Running the test suite
+
+```bash
+sf apex run test \
+  --class-names InterStoreTransferServiceTest,InterStoreTransferActionTest,InventoryPositionSelectorTest,PostInstallScriptTest \
+  --target-org your-org \
+  --result-format human \
+  --code-coverage \
+  --wait 10
+```
+
+For production-deploy validation, use `--test-level RunLocalTests` on a `sf project deploy validate` command — every test method in the four classes will run, and combined coverage exceeds the 75% production gate. See [Testing Guide](../setup/testing.html) for coverage targets per class and CI examples.

@@ -39,7 +39,7 @@ sf project deploy start \
   --target-org <your-org-alias>
 ```
 
-**Deletes:** All custom objects, Apex classes, flows, permission sets, and prompt templates
+**Deletes:** All custom objects, Apex classes (production + test), flows, permission sets, and the admin-authored `IST_Inventory_Recommendation` `GenAiPromptTemplate` (if present in the org)
 
 ---
 
@@ -60,14 +60,16 @@ sf project deploy start --manifest manifest/destructiveChanges.xml --post-destru
 | Component Type | Count | Examples |
 |---------------|-------|----------|
 | Custom Objects | 4 | Pharmacy_Store__c, Medication__c, Inventory_Position__c, Transfer_Log__c |
-| Apex Classes | 7 | InterStoreTransferAction, InterStoreTransferService, PostInstallScript + tests |
+| Apex Classes | 9 | InterStoreTransferAction(+Test), InterStoreTransferService(+Test), InventoryPositionSelector(+Test), PostInstallScript(+Test), ISTTestDataFactory |
 | Flows | 1 | Execute_Inter_Store_Transfer |
 | Permission Sets | 1 | IST_Ops_User |
-| Prompt Templates | 1 | IST_Inventory_Recommendation |
+| Gen AI Prompt Templates | 1 | IST_Inventory_Recommendation (admin-authored; only removed if it exists in the org) |
 | Layouts | 1 | Transfer Log Layout |
 | List Views | 1 | Inventory Transfer Ops |
 
-**Total Records Deleted:** ~29 inventory positions, 6 medications, 6 stores (sample data)
+> Note: the destructiveChanges manifest currently lists `InterStoreTransferActionTest` and `InterStoreTransferServiceTest` but **not** `InventoryPositionSelectorTest` or `PostInstallScriptTest`. If those exist in your org and you want a clean uninstall, remove them manually or extend the manifest.
+
+**Total Records Deleted:** 14 inventory positions, 6 medications, 6 stores (sample data created by PostInstallScript)
 
 ---
 

@@ -56,12 +56,13 @@ AgentforcePharmaGrid follows a strict **Service / Selector / Invocable Action** 
 | Layer | Asset | Responsibility |
 |---|---|---|
 | UI | Agentforce Grid | Renders rows; binds prompt template + button |
-| AI | `IST_Inventory_Recommendation` | Generates per-row recommendation text (≤150 chars) |
+| AI | `IST_Inventory_Recommendation` (`GenAiPromptTemplate`, **admin-authored**, not packaged — see [Create the Prompt Template](../setup/create-prompt-template.html)) | Generates per-row recommendation text (≤150 chars) |
 | Orchestration | `Execute_Inter_Store_Transfer` Flow | Bridges Grid button click → Apex invocable |
 | Action | `InterStoreTransferAction` | Wraps service call as `@InvocableMethod` for Flow/Agent |
 | Service | `InterStoreTransferService` | Compliance gate, source selection, qty math, atomic DML |
 | Selector | `InventoryPositionSelector` | All SOQL; no DML; no business logic |
 | Data | `Pharmacy_Store__c`, `Medication__c`, `Inventory_Position__c`, `Transfer_Log__c` | Domain model + audit |
+| Tests | `InterStoreTransferServiceTest`, `InterStoreTransferActionTest`, `InventoryPositionSelectorTest`, `PostInstallScriptTest` | Full `RunLocalTests` coverage; share `ISTTestDataFactory` |
 
 ---
 
