@@ -82,12 +82,6 @@
         <name>PermissionSet</name>
     </types>
 
-    <!-- ═══ Gen AI Prompt Templates ══════════════════════════════════════ -->
-    <types>
-        <members>IST_Inventory_Recommendation</members>
-        <name>GenAiPromptTemplate</name>
-    </types>
-
     <!-- ═══ Post Install Configuration ═══════════════════════════════════ -->
     <postInstallClass>PostInstallScript</postInstallClass>
 
