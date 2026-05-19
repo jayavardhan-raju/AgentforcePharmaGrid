@@ -34,8 +34,8 @@ keywords:
   - audit-trail
   - invocable-action
   - service-selector-pattern
-doi: "10.5281/zenodo.20106783"
+doi: "10.5281/zenodo.20283941"
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.20106783"
+    value: "10.5281/zenodo.20283941"
     description: "Concept DOI (resolves to latest version)"
