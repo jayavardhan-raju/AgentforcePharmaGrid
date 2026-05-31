@@ -117,13 +117,15 @@ sf data query --query "SELECT DeveloperName, MasterLabel, ActiveVersion FROM AiP
 sf data query --query "SELECT Status FROM FlowDefinitionView WHERE ApiName = 'Execute_Inter_Store_Transfer'" --target-org ist-dev
 ```
 
-Then run a demo script:
+Then seed the demo data (run all three in order — script 3 looks up the records from scripts 1 and 2 by name):
 
 ```bash
-sf apex run --file scripts/apex/TC1_HappyPath_ColdChainTransfer.apex --target-org ist-dev
+sf apex run --file scripts/apex/1_Create_Pharmacy_Stores.apex     --target-org ist-dev
+sf apex run --file scripts/apex/2_Create_Medications.apex          --target-org ist-dev
+sf apex run --file scripts/apex/3_Create_Inventory_Positions.apex  --target-org ist-dev
 ```
 
-The script's final `System.debug` line includes a Lightning record-page URL — paste it into the browser to see the Agentforce Grid populated with the seeded data.
+Each script's `System.debug` output lists the records it created. Open the `Inventory_Position__c` tab (filtered to the `Inventory_Transfer_Ops` list view) to see the Agentforce Grid populated with the seeded data. See [scripts/DEMO_PLAYBOOK.md](https://github.com/jayavardhan-raju/AgentforcePharmaGrid/blob/main/scripts/DEMO_PLAYBOOK.md) for the six scenarios these scripts set up.
 
 ---
 

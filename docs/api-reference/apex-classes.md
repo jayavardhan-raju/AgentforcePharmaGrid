@@ -215,7 +215,7 @@ Five steps, wrapped in a top-level `try / catch` that swallows exceptions to avo
    - `CVS Eastside Oakland` is *not* cold-chain capable; the rest are.
    - `CVS Sunnyvale` has an empty `DEA_Registration__c` to demonstrate the eligibility filter.
 2. **`createMedications()`** — inserts 6 `Medication__c` records: `Mounjaro 5mg`, `Ozempic 1mg` (cold-chain), `Adderall XR 30mg` (Schedule II), `Xanax 0.5mg` (Schedule IV), `Lisinopril 10mg`, `Amoxicillin 500mg`.
-3. **`createInventoryPositions()`** — inserts 14 `Inventory_Position__c` records covering 6 demo scenarios (happy path, Schedule II block, distributor fallback, near-expiry exclusion, Schedule IV allowed, multiple healthy sources).
+3. **`createInventoryPositions()`** — inserts 15 `Inventory_Position__c` records covering 6 demo scenarios (happy path, Schedule II block, distributor fallback, near-expiry exclusion, Schedule IV allowed, multiple healthy sources).
 4. **`assignPermissionSet(Id userId)`** — assigns `IST_Ops_User` to the installer; idempotent (skips if already assigned).
 5. **`verifyPromptTemplate()`** — uses dynamic SOQL (`Database.query`) to check whether `IST_Inventory_Recommendation` exists as an `AiPrompt` row. Behavior:
    - **Found:** debugs `Name`, `DeveloperName`, `ActiveVersion`, and `Id` at default level.
@@ -309,7 +309,7 @@ Exercises every step of the `InstallHandler`. Because `onInstall` is hard to inv
 
 | Test method | Asserts |
 |---|---|
-| `testSuccessfulPostInstall` | All six stores, six medications, and 14 inventory positions are created end-to-end |
+| `testSuccessfulPostInstall` | All six stores, six medications, and 15 inventory positions are created end-to-end |
 | `testStoreCreation` | Validates districts, lat/lng, cold-chain flags, DEA registrations, and `CVS Palo Alto (Closed)` is inactive |
 | `testMedicationCreation` | Validates schedules, NDCs, and cold-chain flags for all six demo medications |
 | `testInventoryPositionCreation` | Validates the six scenario buckets (happy path, Schedule II, fallback, near-expiry, Schedule IV, multi-healthy) |

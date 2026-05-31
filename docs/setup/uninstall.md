@@ -70,7 +70,7 @@ sf apex run --file scripts/uninstall/1_Delete_Sample_Data.apex --target-org <you
 Starting Sample Data Deletion
 ========================================
 Deleted 0 Transfer Log records
-Deleted 14 Inventory Position records
+Deleted 15 Inventory Position records
 Deleted 6 Medication records
 Deleted 6 Pharmacy Store records
 ========================================
@@ -275,7 +275,7 @@ If you need to reinstall the package after uninstallation:
    ```
 
 2. **Post-Install Script Will Automatically:**
-   - Create sample data (6 stores, 6 medications, 14 inventory positions)
+   - Create sample data (6 stores, 6 medications, 15 inventory positions)
    - Assign the `IST_Ops_User` permission set to the installer
    - **Check** for the `IST_Inventory_Recommendation` prompt template (logs `WARN` if missing — re-author it per [Create the Prompt Template](create-prompt-template.html))
 

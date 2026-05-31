@@ -1,4 +1,19 @@
-
+/**
+ * ============================================================================
+ * Script 3 of 3: Create Inventory Position Records
+ * ============================================================================
+ *
+ * Run via: sf apex run --file scripts/apex/3_Create_Inventory_Positions.apex --target-org <alias>
+ *
+ * Creates 15 inventory positions across 6 demo scenarios (happy path,
+ * Schedule II block, distributor fallback, near-expiry exclusion, Schedule IV
+ * allowed, multiple healthy sources). Looks up the stores and medications
+ * created by Scripts 1 and 2 BY NAME and throws IllegalArgumentException
+ * listing anything missing.
+ *
+ * IMPORTANT: Run Script 1 (Pharmacy Stores) and Script 2 (Medications) first.
+ * ============================================================================
+ */
 
 Set<String> expectedStores = new Set<String>{
     'CVS Downtown SF',

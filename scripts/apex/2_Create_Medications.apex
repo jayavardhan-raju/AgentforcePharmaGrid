@@ -3,7 +3,7 @@
  * Script 2 of 3: Create Medication Records
  * ============================================================================
  * 
- * Run via: sf apex run --file scripts/data/2_Create_Medications.apex --target-org <alias>
+ * Run via: sf apex run --file scripts/apex/2_Create_Medications.apex --target-org <alias>
  * 
  * Creates 6 medications with varied regulatory and handling attributes:
  *   - Schedule II controlled substances (will trigger compliance hard stop)

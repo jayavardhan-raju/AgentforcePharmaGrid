@@ -3,7 +3,7 @@
  * Script 1 of 3: Create Pharmacy Store Records
  * ============================================================================
  * 
- * Run via: sf apex run --file scripts/data/1_Create_Pharmacy_Stores.apex --target-org <alias>
+ * Run via: sf apex run --file scripts/apex/1_Create_Pharmacy_Stores.apex --target-org <alias>
  * 
  * Creates 6 pharmacy stores across 2 districts with varied capabilities:
  *   - Cold-chain capable vs. not capable

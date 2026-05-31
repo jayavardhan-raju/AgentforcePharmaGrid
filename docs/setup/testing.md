@@ -14,7 +14,7 @@ This project ships **four Apex test classes** sharing the `ISTTestDataFactory` d
 | `InterStoreTransferServiceTest` | 11 | Compliance gate, cold-chain filter, DEA filter, expiry filter, qty math, FLS-stripped DML, savepoint rollback, preview truncation |
 | `InterStoreTransferActionTest` | 7 | `@InvocableMethod` wrapper: dry-run, execute, default-`confirm`, Schedule II surfaced via action, multi-input bulk shape, invalid id |
 | `InventoryPositionSelectorTest` | 10 | `getById` (null id, missing row, full hydration), `findSurplusSources` (sort order, inactive exclusion, minimum surplus filter, security_enforced) |
-| `PostInstallScriptTest` | 11 | Six demo stores + six medications + 14 inventory positions created, permission-set assignment idempotency, prompt-template verification no-op, error-handling guarantees |
+| `PostInstallScriptTest` | 11 | Six demo stores + six medications + 15 inventory positions created, permission-set assignment idempotency, prompt-template verification no-op, error-handling guarantees |
 
 See the [Apex Classes Reference](../api-reference/apex-classes.html) page for a per-method assertion summary.
 

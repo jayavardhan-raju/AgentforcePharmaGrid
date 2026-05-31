@@ -69,7 +69,7 @@ sf project deploy start --manifest manifest/destructiveChanges.xml --post-destru
 
 > Note: the destructiveChanges manifest currently lists `InterStoreTransferActionTest` and `InterStoreTransferServiceTest` but **not** `InventoryPositionSelectorTest` or `PostInstallScriptTest`. If those exist in your org and you want a clean uninstall, remove them manually or extend the manifest.
 
-**Total Records Deleted:** 14 inventory positions, 6 medications, 6 stores (sample data created by PostInstallScript)
+**Total Records Deleted:** 15 inventory positions, 6 medications, 6 stores (sample data created by PostInstallScript)
 
 ---
 

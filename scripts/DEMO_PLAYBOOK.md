@@ -2,26 +2,30 @@
 
 ## Overview
 
-This playbook accompanies three anonymous Apex scripts in `scripts/apex/`. Each script seeds isolated, demo-named records (no clash with other org data), invokes the live `InterStoreTransferService` end-to-end, and asserts the post-call state with `System.debug` markers prefixed `[OK]`, `[VERIFY]`, and `[ERROR]`.
+This playbook accompanies the three anonymous Apex **seeder** scripts in `scripts/apex/`. Run in order, they build a complete, realistic demo dataset — **6 pharmacy stores, 6 medications, and 15 inventory positions** spread across **6 scenarios** that exercise every code path in `InterStoreTransferService`.
 
-The scripts are **demo seeders, not unit tests**. They use real DML on real records and run synchronously in the script's own transaction. Their job is to give a stakeholder a Lightning record-page URL they can click to see the Agentforce Grid populated and the Transfer Log related list reflecting the scenario's outcome.
+The scripts are **demo seeders, not unit tests, and not the live service**. They only insert records — they do not call `InterStoreTransferService.evaluate()`. Once the data is in place, you drive each scenario yourself by clicking the **Transfer/Optimize** button on the Agentforce Grid (which runs the service through the `Execute_Inter_Store_Transfer` Flow). The seed data is hand-tuned so each scenario produces a different, predictable outcome.
 
-| Script | Scenario | Code Path Exercised |
-|---|---|---|
-| `TC1_HappyPath_ColdChainTransfer.apex` | Cold-chain medication, eligible source found, 50-unit transfer executes | `evaluate` → `findSurplusSources` → `selectBestSource` → `calculateTransferQty` → `buildRecommendation` (dry-run) → `executeTransfer` |
-| `TC2_ScheduleII_ComplianceBlock.apex` | Schedule II Adderall blocked at compliance gate | `evaluate` → `isScheduleII` → `logComplianceBlock` |
-| `TC3_DistributorFallback_NearExpiry.apex` | Two ineligible candidates (near-expiry + non-cold-chain) → distributor fallback | `evaluate` → `findSurplusSources` → `selectBestSource` returns null |
+This is the same dataset that `PostInstallScript.onInstall()` creates automatically on a managed-package install. The scripts let you seed (or re-seed) the data into a scratch org or sandbox where you deployed from source.
+
+| Order | Script | Creates | Purpose |
+|---|---|---|---|
+| 1 | `1_Create_Pharmacy_Stores.apex` | 6 `Pharmacy_Store__c` | Stores with varied cold-chain, DEA-registration, and active flags to exercise every source-eligibility filter |
+| 2 | `2_Create_Medications.apex` | 6 `Medication__c` | Medications spanning Schedule II/IV/None and cold-chain-required/not |
+| 3 | `3_Create_Inventory_Positions.apex` | 15 `Inventory_Position__c` | Inventory across 6 scenarios; queries the records from scripts 1 & 2 by name |
+
+> **Run them in order.** Script 3 looks up stores and medications **by name** and throws `IllegalArgumentException` listing exactly what's missing if you skip script 1 or 2.
 
 ---
 
 ## Prerequisites
 
 1. Deploy AgentforcePharmaGrid to your org (see [Deployment Guide](../docs/setup/deployment.md)).
-2. Assign the `IST_Ops_User` permission set to the user running the script:
+2. Assign the `IST_Ops_User` permission set to the user running the scripts:
    ```bash
    sf org assign permset --name IST_Ops_User --target-org your-org
    ```
-3. The Agentforce Grid must be on the `Inventory_Position__c` record page if you want to *visually* verify each scenario — but the scripts themselves don't depend on the Grid; they assert state via SOQL and `System.debug`.
+3. To *visually* demo each scenario, add the Agentforce Grid (bound to the `Inventory_Transfer_Ops` list view) to the `Inventory_Position__c` record page, and create the `IST_Inventory_Recommendation` prompt template per [Create the Prompt Template](../docs/setup/create-prompt-template.md). The seeder scripts themselves don't depend on the Grid or the template.
 
 ---
 
@@ -30,12 +34,12 @@ The scripts are **demo seeders, not unit tests**. They use real DML on real reco
 ### Option A: Salesforce CLI (recommended)
 
 ```bash
-sf apex run --file scripts/apex/TC1_HappyPath_ColdChainTransfer.apex --target-org your-org
-sf apex run --file scripts/apex/TC2_ScheduleII_ComplianceBlock.apex   --target-org your-org
-sf apex run --file scripts/apex/TC3_DistributorFallback_NearExpiry.apex --target-org your-org
+sf apex run --file scripts/apex/1_Create_Pharmacy_Stores.apex     --target-org your-org
+sf apex run --file scripts/apex/2_Create_Medications.apex          --target-org your-org
+sf apex run --file scripts/apex/3_Create_Inventory_Positions.apex  --target-org your-org
 ```
 
-Each call returns the script's `System.debug` output inline. Look for `[TC1 COMPLETE]` / `[TC2 COMPLETE]` / `[TC3 COMPLETE]` and the Lightning record-page URL printed on the last line.
+Each call prints its `System.debug` output inline — the created record IDs, names, and key flags — so you can confirm the seed succeeded before moving on.
 
 ### Option B: VS Code (Salesforce Extensions)
 
@@ -43,121 +47,94 @@ Each call returns the script's `System.debug` output inline. Look for `[TC1 COMP
 2. Highlight the entire file contents (Ctrl/Cmd-A).
 3. Open the Command Palette (Ctrl/Cmd-Shift-P).
 4. Run **SFDX: Execute Anonymous Apex with Currently Selected Text**.
-5. Pick the target org if prompted.
-6. View output in the Output panel under "Salesforce CLI".
+5. Pick the target org if prompted; repeat for scripts 1 → 2 → 3.
 
 ### Option C: Developer Console
 
 1. Setup → Developer Console.
 2. **Debug** → **Open Execute Anonymous Window**.
-3. Paste the entire script contents.
-4. Tick **Open Log** (so the debug log opens automatically).
-5. Click **Execute**.
-6. In the Log Inspector, filter the **Debug Only** view by `[OK]`, `[VERIFY]`, or `[TC` to follow the script's progress.
+3. Paste a script's contents, tick **Open Log**, and click **Execute**.
+4. Run scripts 1, 2, then 3 in that order.
 
 ---
 
 ## What Each Script Does
 
-### TC1: Happy Path Cold-Chain Transfer
+### Script 1 — `1_Create_Pharmacy_Stores.apex`
 
-Demonstrates the full transfer workflow when every eligibility filter passes.
+Inserts **6 stores** across two districts. The variety is what makes the source-eligibility filters demonstrable:
 
-1. Creates 2 cold-chain-capable Bay Area stores (`TC1 Target SF Downtown`, `TC1 Source SF Westside`), both with valid `DEA_Registration__c` and `Is_Active__c = true`.
-2. Creates 1 medication (`TC1 Mounjaro 5mg`, `Cold_Chain_Required__c = true`, `DEA_Schedule__c = 'None'`).
-3. Creates 2 `Inventory_Position__c` rows: target qty=0/safety=50 (critical); source qty=200/safety=50/expiry+90d.
-4. **Calls `evaluate(targetId, confirm=false)`** — dry-run.
-   - Service: load → not Schedule II → find candidates (1 hit) → `selectBestSource` passes all filters → `calculateTransferQty`: `proposed = (200-50)*50/100 = 75`, `targetNeed = 50-0 = 50`, **`min(75, 50) = 50`**.
-   - Service writes `Recommendation__c` (full text) and `Recommendation_Preview__c` (truncated to 255 if needed).
-   - Returns `success=true`, `recommendedQty=50`, `uhText` ending in *"Shall I proceed with this transfer?"*.
-5. **Calls `evaluate(targetId, confirm=true)`** — execute.
-   - Service: same path through to `executeTransfer`.
-   - Inside savepoint: source qty 200→150, target qty 0→50, `Transfer_Log__c` inserted with `Transfer_Status__c = 'Completed'`, `Quantity_Transferred__c = 50`, full `Notes__c`.
-6. Re-queries and asserts: target qty=50, source qty=150, log status=Completed.
+| Store | District | Cold-Chain Capable | DEA Registration | Active |
+|---|---|---|---|---|
+| CVS Downtown SF | District 1 - Bay Area | ✓ | `DEA-SF-DT-001` | ✓ |
+| CVS Westside SF | District 1 - Bay Area | ✓ | `DEA-SF-WS-002` | ✓ |
+| CVS Eastside Oakland | District 1 - Bay Area | ✗ | `DEA-OAK-ES-003` | ✓ |
+| CVS San Jose Central | District 2 - South Bay | ✓ | `DEA-SJ-CT-004` | ✓ |
+| CVS Sunnyvale | District 2 - South Bay | ✓ | *(blank)* | ✓ |
+| CVS Palo Alto (Closed) | District 2 - South Bay | ✓ | `DEA-PA-CL-006` | ✗ |
 
-**Demo URL:** the script's last `System.debug` prints `/lightning/r/Inventory_Position__c/<targetId>/view`. Open it to see the Agentforce Grid row reflecting completion preview, plus the Transfer Logs related list with the new Completed entry.
+- **CVS Eastside Oakland** is *not* cold-chain capable → filtered out as a source for cold-chain meds.
+- **CVS Sunnyvale** has a blank `DEA_Registration__c` → filtered out by `selectBestSource()`.
+- **CVS Palo Alto (Closed)** is inactive → excluded by the `findSurplusSources()` SOQL `WHERE Store__r.Is_Active__c = true`.
 
-### TC2: Schedule II Compliance Hard Stop
+### Script 2 — `2_Create_Medications.apex`
 
-Demonstrates that the compliance gate fires *before* any source search, no matter how attractive the available surplus is.
+Inserts **6 medications** spanning the regulatory/handling matrix:
 
-1. Creates 2 stores (`TC2 Target SF Downtown`, `TC2 Source SJ Central`) — both fully eligible on every dimension. The script intentionally makes the source attractive so it's clear the block is policy-driven, not data-driven.
-2. Creates 1 Schedule II medication (`TC2 Adderall XR 30mg`, `DEA_Schedule__c = 'II'`).
-3. Creates 2 `Inventory_Position__c` rows: target qty=5/safety=30; source qty=100/safety=20/expiry+150d.
-4. **Calls `evaluate(targetId, confirm=false)`**.
-   - Service: load → `isScheduleII` returns `true` → `logComplianceBlock` writes `Transfer_Log__c` with `Source_Store__c = null`, `Quantity_Transferred__c = 0`, `Transfer_Status__c = 'Blocked'`, `Notes__c = "COMPLIANCE BLOCK: DEA Schedule II - TC2 Adderall XR 30mg. DEA Form 222 required. Automated transfer denied by Agentforce Grid."`
-   - Returns `success=false`, all source/qty fields null, `uhText` containing *"Compliance Restriction: Schedule II controlled substance detected"* and *"Manual DEA Form 222 is required"*.
-5. Asserts: source qty unchanged at 100, target qty unchanged at 5, `Recommendation__c` not written, exactly one Blocked log row exists.
+| Medication | NDC | DEA Schedule | Cold-Chain Required |
+|---|---|---|---|
+| Mounjaro 5mg | `00002-1523-80` | None | ✓ |
+| Ozempic 1mg | `00169-4132-12` | None | ✓ |
+| Adderall XR 30mg | `54092-0391-01` | **II** | ✗ |
+| Xanax 0.5mg | `00009-0055-01` | IV | ✗ |
+| Lisinopril 10mg | `00093-1044-01` | None | ✗ |
+| Amoxicillin 500mg | `65862-0015-01` | None | ✗ |
 
-**Demo URL:** target Inventory Position record. The Transfer Logs related list shows one entry with status **Blocked**, no source store, and a note explaining the DEA Form 222 requirement.
+`NDC__c` is unique, so re-running this script without cleaning up first will raise a `DUPLICATE_VALUE` error — run the cleanup below before re-seeding.
 
-### TC3: Distributor Fallback (Near-Expiry Exclusion)
+### Script 3 — `3_Create_Inventory_Positions.apex`
 
-Demonstrates the no-eligible-source path. Both candidate sources fail eligibility — for *different* reasons — proving each filter is independent.
+Queries the stores and medications by name (validating all are present), then inserts **15 inventory positions** that set up the 6 scenarios below. Each scenario is designed so that clicking **Transfer/Optimize** on the *target* (low/out-of-stock) row produces a specific outcome.
 
-1. Creates 3 stores: target (`TC3 Target SJ Central`, cold-chain capable), and two candidates that each fail one filter:
-   - `TC3 Source SF Downtown NearExpiry` — cold-chain OK, DEA reg OK, but its Inventory Position has `Expiry_Date__c = today + 15` (less than `MIN_DAYS_TO_EXPIRY` of 30).
-   - `TC3 Source Oakland NoColdChain` — `Cold_Chain_Capable__c = false`, but the medication requires cold chain.
-2. Creates 1 cold-chain medication (`TC3 Ozempic 1mg`, `Cold_Chain_Required__c = true`).
-3. Creates 3 `Inventory_Position__c` rows.
-4. **Calls `evaluate(targetId, confirm=false)`**.
-   - Service: load → not Schedule II → `findSurplusSources` returns 2 candidates (both pass the SOQL `Quantity__c > minQty` and `Is_Active__c = true` filters) → `selectBestSource` walks the list:
-     - First candidate (`NearExpiry`, qty=100): cold-chain OK, DEA reg OK, but `today.daysBetween(today+15) = 15 < 30` → **skipped**.
-     - Second candidate (`NoColdChain`, qty=80): `coldChainNeeded = true && !candidate.Store__r.Cold_Chain_Capable__c` → **skipped**.
-   - `selectBestSource` returns null → service returns the distributor-fallback message.
-5. Returns `success=false`, all source/qty fields null, `uhText` containing *"No suitable source store found for TC3 Ozempic 1mg"* and *"Recommended next action: Place an emergency order with your primary distributor."*
-6. Asserts: all 3 inventory quantities unchanged, no `Recommendation__c` written, **no `Transfer_Log__c` written** (this is the only path where the service neither writes a log nor mutates inventory).
+| # | Scenario | Target (critical) row | What happens on Transfer/Optimize |
+|---|---|---|---|
+| 1 | **Happy path (cold chain)** | Mounjaro 5mg @ CVS Downtown SF (qty 0 / safety 50) | Westside SF (qty 200) is an eligible cold-chain source → recommends **50 units**, executes atomically, writes a `Completed` Transfer Log |
+| 2 | **Schedule II block** | Adderall XR 30mg @ CVS Downtown SF (qty 5 / safety 30) | Compliance gate fires before any source search → DEA Form 222 message; a `Blocked` Transfer Log is written |
+| 3 | **Distributor fallback** | Lisinopril 10mg @ CVS Downtown SF (qty 0 / safety 60) | Only other store (Westside, qty 30) is below the required surplus → no eligible source → distributor-fallback message |
+| 4 | **Near-expiry exclusion** | Ozempic 1mg @ CVS San Jose Central (qty 5 / safety 40) | Highest-stock source (Downtown SF, qty 100) expires in 15 days (< 30) → skipped; Westside (qty 80) is eligible → recommends a transfer |
+| 5 | **Schedule IV allowed** | Xanax 0.5mg @ CVS Eastside Oakland (qty 10 / safety 40) | Schedule IV is *not* blocked → San Jose Central (qty 150) is an eligible source → standard transfer |
+| 6 | **Multiple healthy sources** | Amoxicillin 500mg @ CVS Sunnyvale (qty 0 / safety 50) | Two stocked stores (Downtown SF qty 300, San Jose qty 120) → highest-surplus eligible source wins |
 
-**Demo URL:** target Inventory Position record. Status shows LOW/orange. Recommendation Preview is blank. No Transfer Log entries.
+**Demo flow:** open the `Inventory_Position__c` tab / Agentforce Grid, filter to the `Inventory_Transfer_Ops` list view, find the critical row for the scenario you want to show, and click **Transfer/Optimize**. The agent surfaces the dry-run recommendation (`uhText`) and asks you to confirm; on confirmation the transfer executes and the Transfer Logs related list updates.
 
 ---
 
 ## Cleanup
 
-To wipe all demo data created by all three scripts in one go, run this anonymous Apex:
+To wipe **all** seeded data (so you can re-run the scripts cleanly), use the bundled uninstall seeder:
+
+```bash
+sf apex run --file scripts/uninstall/1_Delete_Sample_Data.apex --target-org your-org
+```
+
+It deletes in FK-safe order — Transfer Logs, then Inventory Positions, then Medications, then Pharmacy Stores. Or paste this equivalent inline:
 
 ```apex
-Set<String> demoStoreNames = new Set<String>{
-    'TC1 Target SF Downtown', 'TC1 Source SF Westside',
-    'TC2 Target SF Downtown', 'TC2 Source SJ Central',
-    'TC3 Target SJ Central', 'TC3 Source SF Downtown NearExpiry', 'TC3 Source Oakland NoColdChain'
-};
-Set<String> demoMedNames = new Set<String>{
-    'TC1 Mounjaro 5mg', 'TC2 Adderall XR 30mg', 'TC3 Ozempic 1mg'
-};
-
-List<Transfer_Log__c> logs = [
-    SELECT Id FROM Transfer_Log__c
-    WHERE Inventory_Position__r.Store__r.Name IN :demoStoreNames
-       OR Source_Store__r.Name              IN :demoStoreNames
-       OR Target_Store__r.Name              IN :demoStoreNames
-];
-if (!logs.isEmpty()) { delete logs; System.debug('Deleted Transfer_Log__c: ' + logs.size()); }
-
-List<Inventory_Position__c> invs = [
-    SELECT Id FROM Inventory_Position__c
-    WHERE Store__r.Name IN :demoStoreNames OR Medication__r.Name IN :demoMedNames
-];
-if (!invs.isEmpty()) { delete invs; System.debug('Deleted Inventory_Position__c: ' + invs.size()); }
-
-List<Medication__c> meds = [SELECT Id FROM Medication__c WHERE Name IN :demoMedNames];
-if (!meds.isEmpty()) { delete meds; System.debug('Deleted Medication__c: ' + meds.size()); }
-
-List<Pharmacy_Store__c> stores = [SELECT Id FROM Pharmacy_Store__c WHERE Name IN :demoStoreNames];
-if (!stores.isEmpty()) { delete stores; System.debug('Deleted Pharmacy_Store__c: ' + stores.size()); }
-
+delete [SELECT Id FROM Transfer_Log__c];
+delete [SELECT Id FROM Inventory_Position__c];
+delete [SELECT Id FROM Medication__c];
+delete [SELECT Id FROM Pharmacy_Store__c];
 System.debug('[CLEANUP COMPLETE]');
 ```
 
-Each TC script also runs its *own* cleanup at the top, so re-running a single script is always safe — but the standalone snippet above lets you nuke all demo data in one shot when you're done with the demo.
+> **Note:** these `delete` statements remove **all** records of each object, including any you created by hand. In a shared org, scope the queries to the demo store/medication names instead. Never delete `Transfer_Log__c` records in a real production org — they are the DEA compliance audit trail.
 
 ---
 
 ## Important Notes
 
-- **Demo seeders, not unit tests.** These scripts use real DML on real records. Don't run them in production. They live in `scripts/apex/` precisely because they are *not* part of the deployable metadata — running `sf project deploy` will not push them.
-- **No async to bypass.** This project doesn't use Queueable, Batch, Future, or @Schedulable, so there's no async timing to work around. Everything in `evaluate()` runs synchronously inside the script's transaction.
-- **The TC scripts are *demos*, separate from the Apex test suite.** The deployable test classes (`InterStoreTransferServiceTest`, `InterStoreTransferActionTest`, `InventoryPositionSelectorTest`, `PostInstallScriptTest`) ship under `force-app/main/default/classes/` and provide production-deploy coverage. See [Testing Guide](../docs/setup/testing.md) for the per-class breakdown.
-- **PostInstallScript creates similar-but-separate data.** If you've installed via a managed package, you'll already have records named `CVS Downtown SF`, `CVS Westside SF`, etc. The TC scripts use `TC1`/`TC2`/`TC3`-prefixed names to avoid colliding with that data.
-- **Schedule II `Transfer_Log__c` is durable.** Cleanup deletes it for re-runs, but in a real org you would never delete a compliance audit log. The cleanup-then-recreate pattern is purely for demo convenience.
-- **Prompt template is admin-authored.** The Grid's Recommendation column shows the `IST_Inventory_Recommendation` `GenAiPromptTemplate` output, which is created manually in Prompt Builder per [docs/setup/create-prompt-template.md](../docs/setup/create-prompt-template.md). Until that template exists in your org, the demo URL still works — you'll just see the `Recommendation_Preview__c` text written by the service rather than the per-row prompt-template output.
+- **Seeders, not unit tests.** These scripts use real DML on real records. Don't run them in production. They live in `scripts/apex/` precisely because they are *not* deployable metadata — `sf project deploy` will not push them.
+- **No async to bypass.** This project uses no Queueable, Batch, Future, or `@Schedulable` processing, so there is no async timing to work around. The service runs synchronously when the Grid button invokes it.
+- **Same data as `PostInstallScript`.** A managed-package install runs `PostInstallScript.onInstall()`, which seeds this exact dataset and assigns `IST_Ops_User` automatically. These scripts are for source-deploy orgs (scratch/sandbox) where the post-install handler doesn't fire.
+- **The deployable test suite is separate.** `InterStoreTransferServiceTest`, `InterStoreTransferActionTest`, `InventoryPositionSelectorTest`, and `PostInstallScriptTest` (under `force-app/main/default/classes/`) provide production-deploy coverage. See the [Testing Guide](../docs/setup/testing.md). The seeder scripts here are *not* part of that coverage.
+- **Prompt template is admin-authored.** The Grid's Recommendation column shows `IST_Inventory_Recommendation` output, created manually in Prompt Builder per [docs/setup/create-prompt-template.md](../docs/setup/create-prompt-template.md). Until it exists, the column simply shows the `Recommendation_Preview__c` text the service writes after a dry-run.

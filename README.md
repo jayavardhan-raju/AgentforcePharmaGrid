@@ -89,7 +89,7 @@ What makes this project different from a generic transfer utility:
 | Service | `InterStoreTransferService.evaluate()` | All business rules: compliance gate, source selection, qty calc, dry-run vs execute branching, atomic DML. |
 | Selector | `InventoryPositionSelector` | All SOQL. `getById()` and `findSurplusSources()`. No DML, no business logic. |
 | Data | `Pharmacy_Store__c`, `Medication__c`, `Inventory_Position__c`, `Transfer_Log__c` | Domain model. `Transfer_Log__c` is the immutable audit object. |
-| Install | `PostInstallScript` (InstallHandler) | Seeds 6 stores, 6 medications, 14 inventory positions; assigns `IST_Ops_User`; verifies prompt template via `AiPrompt` query (logs `WARN` if missing — the template is admin-authored, not packaged). |
+| Install | `PostInstallScript` (InstallHandler) | Seeds 6 stores, 6 medications, 15 inventory positions; assigns `IST_Ops_User`; verifies prompt template via `AiPrompt` query (logs `WARN` if missing — the template is admin-authored, not packaged). |
 | Tests | `InterStoreTransferServiceTest` (11 methods), `InterStoreTransferActionTest` (7 methods), `InventoryPositionSelectorTest` (10 methods), `PostInstallScriptTest` (11 methods) | Cover every code path including compliance block, cold-chain filter, expiry filter, savepoint rollback, and post-install seeding. |
 | Test Factory | `ISTTestDataFactory` (`@IsTest`) | `createStore`, `createMedication`, `createInventory` helpers shared by all four test classes. |
 
@@ -196,18 +196,22 @@ If every candidate fails, the action returns the distributor-fallback `uhText`.
 
 ## Demo Scenarios
 
-Ready-to-run anonymous Apex scripts live in `scripts/apex/`. See [scripts/DEMO_PLAYBOOK.md](scripts/DEMO_PLAYBOOK.md) for full instructions.
+Three anonymous Apex **seeder** scripts live in `scripts/apex/`. Run them in order to build the full demo dataset — 6 stores, 6 medications, and 15 inventory positions across 6 scenarios — then drive each scenario by clicking **Transfer/Optimize** on the Agentforce Grid. See [scripts/DEMO_PLAYBOOK.md](scripts/DEMO_PLAYBOOK.md) for full instructions.
 
-| Script | Scenario | What It Demonstrates |
-|---|---|---|
-| `TC1_HappyPath_ColdChainTransfer.apex` | Mounjaro 5mg, cold-chain match, dry-run + execute | Full happy path: surplus selection, cold-chain filter passes, recommendation written, savepoint execution, audit log written |
-| `TC2_ScheduleII_ComplianceBlock.apex` | Adderall XR 30mg, Schedule II hard stop | Compliance gate fires before any source search; `Blocked` `Transfer_Log__c` written; DEA Form 222 message returned |
-| `TC3_DistributorFallback_NearExpiry.apex` | Ozempic 1mg, only candidate is near-expiry | All candidates fail eligibility; distributor-fallback `uhText` returned; no inventory mutation |
+| Order | Script | Creates | Purpose |
+|---|---|---|---|
+| 1 | `1_Create_Pharmacy_Stores.apex` | 6 `Pharmacy_Store__c` | Varied cold-chain / DEA-registration / active flags to exercise every eligibility filter |
+| 2 | `2_Create_Medications.apex` | 6 `Medication__c` | Schedule II / IV / None and cold-chain-required / not |
+| 3 | `3_Create_Inventory_Positions.apex` | 15 `Inventory_Position__c` | Inventory across 6 scenarios (happy path, Schedule II block, distributor fallback, near-expiry exclusion, Schedule IV allowed, multiple healthy sources) |
+
+Script 3 looks up the records from scripts 1 and 2 **by name**, so run them in order. This is the same dataset `PostInstallScript` seeds automatically on a managed-package install.
 
 Run with:
 
 ```bash
-sf apex run --file scripts/apex/TC1_HappyPath_ColdChainTransfer.apex --target-org your-org
+sf apex run --file scripts/apex/1_Create_Pharmacy_Stores.apex     --target-org your-org
+sf apex run --file scripts/apex/2_Create_Medications.apex          --target-org your-org
+sf apex run --file scripts/apex/3_Create_Inventory_Positions.apex  --target-org your-org
 ```
 
 ---
@@ -229,8 +233,10 @@ sf project deploy start --source-dir force-app --target-org your-org
 # Assign the permission set to your user
 sf org assign permset --name IST_Ops_User --target-org your-org
 
-# (Optional) seed demo data via the post-install logic, manually
-sf apex run --file scripts/apex/TC1_HappyPath_ColdChainTransfer.apex --target-org your-org
+# (Optional) seed demo data manually (run all three in order)
+sf apex run --file scripts/apex/1_Create_Pharmacy_Stores.apex     --target-org your-org
+sf apex run --file scripts/apex/2_Create_Medications.apex          --target-org your-org
+sf apex run --file scripts/apex/3_Create_Inventory_Positions.apex  --target-org your-org
 ```
 
 ### Post-deploy steps
