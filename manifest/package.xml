@@ -81,6 +81,15 @@
         <members>IST_Ops_User</members>
         <name>PermissionSet</name>
     </types>
+    <types>
+        <members>Inventory_Position_Record_Page</members>
+        <members>Transfer_Log_Record_Page</members>
+        <name>flexipage</name>
+    </types>
+    <types>
+        <members>Transfer_Log__c</members>
+        <name>CustomTab</name>
+    </types>
 
     <!-- ═══ Post Install Configuration ═══════════════════════════════════ -->
     <postInstallClass>PostInstallScript</postInstallClass>
