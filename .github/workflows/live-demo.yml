@@ -1,0 +1,146 @@
+name: Live Demo Provisioning
+
+on:
+  repository_dispatch:
+    types: [live-demo-requested]
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_REPO: jayavardhan-raju/AgentforcePharmaGrid
+  SCRATCH_ORG_DURATION_DAYS: "30"
+  SCRATCH_ALIAS: pharmagrid-demo-${{ github.run_id }}
+  ARTIFACT_DIR: artifacts/live-demo/${{ github.run_id }}
+
+jobs:
+  provision:
+    name: Provision requester demo org
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare artifact directory
+        run: mkdir -p "$ARTIFACT_DIR/screenshots"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Salesforce CLI and demo tooling
+        run: |
+          npm install --global @salesforce/cli
+          npm install --no-save playwright gifencoder pngjs
+          npx playwright install --with-deps chromium
+
+      - name: Verify requester fork
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/live-demo/verify-fork.mjs
+
+      - name: Claim requester Dev Hub auth URL
+        env:
+          DEMO_BROKER_CLAIM_URL: ${{ vars.DEMO_BROKER_CLAIM_URL }}
+          DEMO_BROKER_ACTIONS_TOKEN: ${{ secrets.DEMO_BROKER_ACTIONS_TOKEN }}
+        run: |
+          set +x
+          AUTH_URL="$(node scripts/live-demo/claim-auth-url.mjs)"
+          echo "::add-mask::$AUTH_URL"
+          AUTH_FILE="$RUNNER_TEMP/sfauth.txt"
+          printf '%s' "$AUTH_URL" > "$AUTH_FILE"
+          sf org login sfdx-url --sfdx-url-file "$AUTH_FILE" --alias requester-devhub --set-default-dev-hub --json > "$RUNNER_TEMP/devhub-login.json"
+          rm -f "$AUTH_FILE"
+          unset AUTH_URL
+
+      - name: Create 30-day Agentforce scratch org
+        run: |
+          sf org create scratch \
+            --definition-file config/project-scratch-def.json \
+            --alias "$SCRATCH_ALIAS" \
+            --duration-days "$SCRATCH_ORG_DURATION_DAYS" \
+            --target-dev-hub requester-devhub \
+            --set-default \
+            --json > "$RUNNER_TEMP/scratch-create.json"
+
+      - name: Deploy AgentforcePharmaGrid
+        run: |
+          sf project deploy start \
+            --source-dir force-app \
+            --target-org "$SCRATCH_ALIAS" \
+            --test-level RunLocalTests \
+            --wait 30 \
+            --json > "$ARTIFACT_DIR/deploy.json"
+
+      - name: Run Apex regression tests with coverage
+        run: |
+          sf apex run test \
+            --class-names InterStoreTransferServiceTest,InterStoreTransferActionTest,InventoryPositionSelectorTest,PostInstallScriptTest \
+            --target-org "$SCRATCH_ALIAS" \
+            --code-coverage \
+            --result-format json \
+            --wait 30 \
+            --json > "$ARTIFACT_DIR/apex-tests.json"
+
+      - name: Assign IST operations permission set
+        run: |
+          sf org assign permset \
+            --name IST_Ops_User \
+            --target-org "$SCRATCH_ALIAS" \
+            --json > "$ARTIFACT_DIR/permset-assignment.json"
+
+      - name: Seed demo data
+        run: |
+          sf apex run --file scripts/apex/1_Create_Pharmacy_Stores.apex --target-org "$SCRATCH_ALIAS" --json > "$ARTIFACT_DIR/seed-1-pharmacy-stores.json"
+          sf apex run --file scripts/apex/2_Create_Medications.apex --target-org "$SCRATCH_ALIAS" --json > "$ARTIFACT_DIR/seed-2-medications.json"
+          sf apex run --file scripts/apex/3_Create_Inventory_Positions.apex --target-org "$SCRATCH_ALIAS" --json > "$ARTIFACT_DIR/seed-3-inventory-positions.json"
+
+      - name: Generate scratch org password
+        run: |
+          sf org generate password --target-org "$SCRATCH_ALIAS" --json > "$RUNNER_TEMP/scratch-password.json"
+          node scripts/live-demo/write-org-credentials.mjs \
+            --target-org "$SCRATCH_ALIAS" \
+            --password-json "$RUNNER_TEMP/scratch-password.json" \
+            --credentials "$RUNNER_TEMP/org-credentials.json" \
+            --summary "$ARTIFACT_DIR/org-summary.json" \
+            --duration-days "$SCRATCH_ORG_DURATION_DAYS"
+
+      - name: Configure Prompt Builder template
+        run: node scripts/live-demo/configure-prompt-builder.mjs --target-org "$SCRATCH_ALIAS" --artifacts "$ARTIFACT_DIR"
+
+      - name: Configure and verify real Agentforce Grid
+        run: node scripts/live-demo/configure-agentforce-grid.mjs --target-org "$SCRATCH_ALIAS" --artifacts "$ARTIFACT_DIR"
+
+      - name: Execute six Salesforce UI Transfer/Optimize scenarios
+        run: node scripts/live-demo/run-salesforce-ui-scenarios.mjs --target-org "$SCRATCH_ALIAS" --artifacts "$ARTIFACT_DIR"
+
+      - name: Create consolidated demo GIF
+        if: always()
+        run: node scripts/live-demo/create-gif.mjs "$ARTIFACT_DIR/screenshots" "$ARTIFACT_DIR/agentforce-pharmagrid-demo.gif"
+
+      - name: Upload live demo artifacts
+        if: always()
+        id: upload-artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-demo-${{ github.run_id }}
+          path: ${{ env.ARTIFACT_DIR }}
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Send Mailtrap demo email
+        if: always()
+        env:
+          MAILTRAP_TOKEN: ${{ secrets.MAILTRAP_TOKEN }}
+          MAILTRAP_FROM_EMAIL: ${{ vars.MAILTRAP_FROM_EMAIL }}
+          MAILTRAP_FROM_NAME: ${{ vars.MAILTRAP_FROM_NAME }}
+          ARTIFACT_URL: ${{ steps.upload-artifacts.outputs.artifact-url }}
+        run: |
+          node scripts/live-demo/send-mailtrap-email.mjs \
+            --artifacts "$ARTIFACT_DIR" \
+            --credentials "$RUNNER_TEMP/org-credentials.json" \
+            --status "${{ job.status }}" \
+            --duration-days "$SCRATCH_ORG_DURATION_DAYS"

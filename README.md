@@ -216,6 +216,17 @@ sf apex run --file scripts/apex/3_Create_Inventory_Positions.apex  --target-org 
 
 ---
 
+## Live Demo Launch Flow
+
+The published GitHub Pages site includes a secure live-demo launch form:
+[https://jayavardhan-raju.github.io/AgentforcePharmaGrid/live-demo.html](https://jayavardhan-raju.github.io/AgentforcePharmaGrid/live-demo.html).
+
+The requester supplies their name, email, GitHub username, fork URL, and Salesforce Dev Hub auth URL. The auth URL is sent to the short-lived Cloudflare Worker broker under `broker/cloudflare-worker/`, stored with a short TTL, claimed once by `.github/workflows/live-demo.yml`, and deleted immediately after claim. It is not accepted through GitHub Issues, workflow inputs, repository secrets, logs, artifacts, or email.
+
+The workflow verifies the requester fork, logs into the requester Dev Hub using a temp `$RUNNER_TEMP/sfauth.txt` file, deletes that file immediately, creates a **30-day** Agentforce-ready scratch org, deploys the source, seeds all six scenarios, validates Prompt Builder and real Agentforce Grid availability, executes the six Salesforce UI Transfer/Optimize scenarios, uploads screenshots/GIF evidence, and sends a Mailtrap email with the scratch org credentials and expiration date.
+
+---
+
 ## Setup & Deployment
 
 ### Prerequisites

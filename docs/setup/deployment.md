@@ -23,8 +23,8 @@ How to deploy AgentforcePharmaGrid to a scratch org, sandbox, or production org.
 ## Deploy to a scratch org
 
 ```bash
-# 1. Create a scratch org with Agentforce enabled
-sf org create scratch --definition-file config/project-scratch-def.json --alias ist-dev --duration-days 7
+# 1. Create a 30-day scratch org with Agentforce enabled
+sf org create scratch --definition-file config/project-scratch-def.json --alias ist-dev --duration-days 30
 
 # 2. Push source
 sf project deploy start --source-dir force-app --target-org ist-dev
@@ -36,7 +36,7 @@ sf org assign permset --name IST_Ops_User --target-org ist-dev
 sf org open --target-org ist-dev
 ```
 
-> The scratch org definition file is not in the uploaded `force-app/` archive — you'll need to add `config/project-scratch-def.json` with the `Agentforce` and `EinsteinAI` features enabled before step 1 works.
+> The scratch org definition uses the `Einstein1AIPlatform` feature with Agentforce and Einstein GPT platform settings enabled. The requester Dev Hub must support 30-day scratch orgs and have scratch org capacity available.
 
 ---
 

@@ -21,6 +21,7 @@ There is no LWC, no middleware, and no external service. Every component is plat
 | Section | What's there |
 |---|---|
 | [Architecture Overview](architecture/overview.html) | Layered architecture, end-to-end data flow, security model |
+| [Launch Live Demo](live-demo.html) | Secure requester-supplied Dev Hub auth URL flow for 30-day demo orgs |
 | [Data Model](architecture/data-model.html) | All four custom objects with every field and relationship |
 | [Transfer Engine](architecture/transfer-engine.html) | The four constants, the qty math, the eligibility filter order |
 | [Apex Classes Reference](api-reference/apex-classes.html) | Every public class, method, inner class, and test class |
@@ -33,6 +34,7 @@ There is no LWC, no middleware, and no external service. Every component is plat
 ## Quick Links
 
 - [GitHub Repository](https://github.com/jayavardhan-raju/AgentforcePharmaGrid)
+- [Launch Live Demo](live-demo.html)
 - [Demo Playbook](https://github.com/jayavardhan-raju/AgentforcePharmaGrid/blob/main/scripts/DEMO_PLAYBOOK.md)
 - [Citation Guide](https://github.com/jayavardhan-raju/AgentforcePharmaGrid/blob/main/CITING.md)
 - [Zenodo DOI 10.5281/zenodo.20283941](https://doi.org/10.5281/zenodo.20283941)
