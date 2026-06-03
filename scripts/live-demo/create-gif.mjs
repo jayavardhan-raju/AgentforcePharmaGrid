@@ -1,17 +1,13 @@
-import { createReadStream, createWriteStream } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { tmpdir } from "node:os";
 
 const [screenshotsDir, outputPath] = process.argv.slice(2);
 
 if (!screenshotsDir || !outputPath) {
   throw new Error("Usage: node create-gif.mjs <screenshots-dir> <output.gif>");
 }
-
-const [{ default: GIFEncoder }, { PNG }] = await Promise.all([
-  import("gifencoder"),
-  import("pngjs"),
-]);
 
 const files = (await readdir(screenshotsDir))
   .filter((file) => file.toLowerCase().endsWith(".png"))
@@ -23,47 +19,43 @@ if (files.length === 0) {
   process.exit(0);
 }
 
-const frames = [];
-for (const file of files) {
-  const png = await readPng(file);
-  frames.push({ file, png });
+const frameDir = join(tmpdir(), `pharmagrid-gif-${Date.now()}`);
+await mkdir(frameDir, { recursive: true });
+
+try {
+  for (const [index, file] of files.entries()) {
+    await copyFile(file, join(frameDir, `frame-${String(index + 1).padStart(4, "0")}.png`));
+  }
+
+  await run("ffmpeg", [
+    "-y",
+    "-framerate",
+    "1",
+    "-i",
+    join(frameDir, "frame-%04d.png"),
+    "-vf",
+    "scale=1280:-1:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=white,fps=1",
+    "-loop",
+    "0",
+    outputPath,
+  ]);
+
+  const output = await stat(outputPath);
+  console.log(`Created ${basename(outputPath)} with ${files.length} screenshots (${output.size} bytes)`);
+} finally {
+  await rm(frameDir, { recursive: true, force: true });
 }
 
-const width = frames[0].png.width;
-const height = frames[0].png.height;
-const compatibleFrames = frames.filter((frame) => frame.png.width === width && frame.png.height === height);
-
-const encoder = new GIFEncoder(width, height);
-const outputStream = createWriteStream(outputPath);
-const finished = new Promise((resolve, reject) => {
-  outputStream.on("finish", resolve);
-  outputStream.on("error", reject);
-});
-encoder.createReadStream().pipe(outputStream);
-encoder.start();
-encoder.setRepeat(0);
-encoder.setDelay(1200);
-encoder.setQuality(12);
-
-for (const frame of compatibleFrames) {
-  encoder.addFrame(frame.png.data);
-}
-
-encoder.finish();
-await finished;
-
-const output = await stat(outputPath);
-console.log(
-  `Created ${basename(outputPath)} with ${compatibleFrames.length}/${frames.length} screenshots (${output.size} bytes)`,
-);
-
-async function readPng(path) {
-  return await new Promise((resolve, reject) => {
-    createReadStream(path)
-      .pipe(new PNG())
-      .on("parsed", function () {
-        resolve(this);
-      })
-      .on("error", reject);
+async function run(command, args) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: "inherit" });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`${command} exited with code ${code}`));
+      }
+    });
   });
 }

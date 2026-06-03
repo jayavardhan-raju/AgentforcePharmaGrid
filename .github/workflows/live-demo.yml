@@ -31,11 +31,16 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install system demo tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Install Salesforce CLI and demo tooling
         run: |
           npm install --global @salesforce/cli
-          npm install --no-save playwright gifencoder pngjs
-          npx playwright install --with-deps chromium
+          npm install --no-save --no-package-lock --omit=dev playwright
+          npx --no-install playwright install --with-deps chromium
 
       - name: Verify requester fork
         env:

@@ -86,6 +86,12 @@ const response = await fetch("https://send.api.mailtrap.io/api/send", {
 
 if (!response.ok) {
   const body = await response.text();
+  if (response.status === 401) {
+    throw new Error(
+      `Mailtrap rejected MAILTRAP_TOKEN with HTTP 401. Replace the GitHub Actions secret MAILTRAP_TOKEN with a valid Mailtrap Send API token. Response: ${body}`,
+    );
+  }
+
   throw new Error(`Mailtrap send failed: HTTP ${response.status} ${body}`);
 }
 
