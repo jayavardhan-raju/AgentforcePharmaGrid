@@ -17,7 +17,6 @@ exclude:
   - scripts/
   - manifest/
   - "*.json"
-  - "*.js"
   - .husky/
   - .vscode/
   - Gemfile

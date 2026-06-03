@@ -13,6 +13,8 @@ Use this secure launch form to provision a 30-day Salesforce scratch org from yo
 <form
   id="live-demo-form"
   class="live-demo-form"
+  action="javascript:void(0)"
+  method="post"
   data-broker-url="https://agentforce-pharmagrid-auth-broker.jay-agentforce.workers.dev/launch"
   autocomplete="off"
 >
@@ -57,7 +59,7 @@ Use this secure launch form to provision a 30-day Salesforce scratch org from yo
 
   <div class="live-demo-actions">
     <button type="submit" id="live-demo-submit">Launch 30-Day Demo</button>
-    <p id="live-demo-status" role="status" aria-live="polite"></p>
+    <p id="live-demo-status" role="status" aria-live="polite">Form script loading...</p>
   </div>
 </form>
 

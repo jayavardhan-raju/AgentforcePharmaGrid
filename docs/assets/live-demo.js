@@ -10,6 +10,8 @@
   const requestId = document.getElementById("live-demo-request-id");
   const expiresAt = document.getElementById("live-demo-expires-at");
 
+  showStatus("Ready to submit.");
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     clearStatus();
