@@ -219,7 +219,7 @@ export function isValidSalesforceAuthUrl(value) {
     return false;
   }
 
-  return /^force:\/\/[^@\s]+@https:\/\/[A-Za-z0-9.-]+(?:\/[^\s]*)?$/.test(value);
+  return /^force:\/\/[^@\s]+@(?:https:\/\/)?[A-Za-z0-9.-]+(?:\/[^\s]*)?$/.test(value);
 }
 
 function isValidGitHubRepoUrl(value) {

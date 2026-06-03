@@ -83,8 +83,8 @@
     }
 
     const authUrl = (data.salesforceAuthUrl || "").trim();
-    if (!/^force:\/\/[^@\s]+@https:\/\/[A-Za-z0-9.-]+(?:\/[^\s]*)?$/.test(authUrl)) {
-      return "Enter a valid Salesforce Dev Hub auth URL beginning with force://.";
+    if (!/^force:\/\/[^@\s]+@(?:https:\/\/)?[A-Za-z0-9.-]+(?:\/[^\s]*)?$/.test(authUrl)) {
+      return "Enter a valid Salesforce Dev Hub auth URL in force://...@instance format.";
     }
 
     return "";

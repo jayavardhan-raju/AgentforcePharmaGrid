@@ -4,6 +4,8 @@ import test from "node:test";
 import { createHandler, isValidSalesforceAuthUrl } from "../src/index.mjs";
 
 const VALID_AUTH_URL =
+  "force://PlatformCLI::00Dxx0000000000!AQwAQExampleRefreshToken@login.salesforce.com";
+const VALID_AUTH_URL_WITH_PROTOCOL =
   "force://PlatformCLI::00Dxx0000000000!AQwAQExampleRefreshToken@https://login.salesforce.com";
 
 class MemoryKV {
@@ -163,6 +165,7 @@ test("expired claims are rejected and deleted", async () => {
 
 test("Salesforce auth URL validation is strict enough for log-safe handling", () => {
   assert.equal(isValidSalesforceAuthUrl(VALID_AUTH_URL), true);
+  assert.equal(isValidSalesforceAuthUrl(VALID_AUTH_URL_WITH_PROTOCOL), true);
   assert.equal(isValidSalesforceAuthUrl(`${VALID_AUTH_URL}\nSECRET=1`), false);
   assert.equal(isValidSalesforceAuthUrl("sfdx://not-supported"), false);
 });

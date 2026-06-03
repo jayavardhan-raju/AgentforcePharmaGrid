@@ -31,7 +31,7 @@ Use this secure launch form to provision a 30-day Salesforce scratch org from yo
 
     <label>
       <span>GitHub Username</span>
-      <input name="githubUsername" type="text" pattern="[A-Za-z0-9-]{1,39}" required>
+      <input name="githubUsername" type="text" maxlength="39" required>
     </label>
 
     <label>
