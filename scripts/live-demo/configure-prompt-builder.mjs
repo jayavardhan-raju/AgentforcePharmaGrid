@@ -107,7 +107,7 @@ async function findPrompt(targetOrg) {
   try {
     const records = await querySalesforce(
       targetOrg,
-      `SELECT Id, DeveloperName, MasterLabel, ActiveVersion FROM AiPrompt WHERE DeveloperName = '${PROMPT_API_NAME}' LIMIT 1`,
+      `SELECT Id, DeveloperName, MasterLabel, ActiveVersion FROM AiPrompt WHERE DeveloperName = '${PROMPT_API_NAME}' OR MasterLabel = '${promptTemplate.name}' ORDER BY CreatedDate DESC LIMIT 1`,
     );
     return { records };
   } catch (error) {
@@ -260,7 +260,7 @@ async function createPromptBuilderTemplate(page, captures) {
 
 async function fillPromptTemplateDetails(page) {
   const nameFilled = await fillFirstUi(page, ["Prompt Template Name", "Template Name", "Name"], promptTemplate.name, 8000);
-  await fillFirstUi(page, ["API Name", "Developer Name"], promptTemplate.apiName, 3000);
+  await fillFirstUi(page, ["API Name", "Prompt Template API Name", "Developer Name"], promptTemplate.apiName, 5000);
   await fillFirstUi(page, ["Template Description", "Description"], promptTemplate.description, 8000);
   return nameFilled;
 }
