@@ -4,6 +4,10 @@ import { ensureDir, getOrgOpenUrl, querySalesforce, writeJsonFile } from "./lib.
 
 const PROMPT_API_NAME = "IST_Inventory_Recommendation";
 const PROMPT_NAME = "IST Inventory Recommendation";
+const PROMPT_BUILDER_HOME_PATHS = [
+  "/lightning/setup/EinsteinPromptStudio/home",
+  "/lightning/setup/EinsteinGPTPromptTemplates/home",
+];
 const PROMPT_TEXT = `You are a US retail pharmacy inventory analyst assistant.
 Analyse the inventory record below and generate a concise, actionable
 recommendation in 1-2 sentences maximum.
@@ -62,30 +66,37 @@ const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 
 try {
-  const promptHomeUrl = await getOrgOpenUrl(
-    values["target-org"],
-    "/lightning/setup/EinsteinGPTPromptTemplates/home",
-  );
-  await page.goto(promptHomeUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
-  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-001-home.png`, fullPage: true });
-
-  await clickFirst(page, [/new prompt template/i, /^new$/i]);
+  await openPromptBuilderAndClickNew(page);
   await page.waitForTimeout(3000);
   await page.screenshot({ path: `${values.artifacts}/screenshots/PB-002-new-template.png`, fullPage: true });
 
+  await completeTemplateTypeStep(page);
+  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-003-template-editor.png`, fullPage: true });
+
   await fillFirst(page, [/name/i], PROMPT_NAME);
-  await fillFirst(page, [/api name/i, /developer name/i], PROMPT_API_NAME);
-  await fillFirst(page, [/description/i], "Analyzes inventory rows and generates pharmacy IST recommendations.");
-  await fillFirst(page, [/system prompt/i, /prompt/i, /instructions/i], PROMPT_TEXT);
-  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-003-filled-template.png`, fullPage: true });
+  await fillIfPresent(page, [/api name/i, /developer name/i], PROMPT_API_NAME, { timeoutMs: 10000 });
+  await fillIfPresent(page, [/description/i], "Analyzes inventory rows and generates pharmacy IST recommendations.", {
+    timeoutMs: 10000,
+  });
+
+  if (!(await fillIfPresent(page, [/system prompt/i, /prompt/i, /instructions/i], PROMPT_TEXT, { timeoutMs: 10000 }))) {
+    await clickIfPresent(page, [/^next$/i, /continue/i], { timeoutMs: 15000 });
+    await page.waitForTimeout(3000);
+    await fillFirst(page, [/system prompt/i, /prompt/i, /instructions/i], PROMPT_TEXT);
+  }
+
+  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-004-filled-template.png`, fullPage: true });
 
   await clickFirst(page, [/save/i, /create/i]);
   await page.waitForTimeout(5000);
-  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-004-saved-template.png`, fullPage: true });
+  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-005-saved-template.png`, fullPage: true });
 
   await clickIfPresent(page, [/activate/i]);
   await page.waitForTimeout(3000);
-  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-005-activation-attempt.png`, fullPage: true });
+  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-006-activation-attempt.png`, fullPage: true });
+} catch (error) {
+  await captureDiagnostics(page, error);
+  throw error;
 } finally {
   await browser.close();
 }
@@ -121,46 +132,196 @@ function isActive(record) {
   return Number(record.ActiveVersion || 0) > 0;
 }
 
-async function clickFirst(page, labels) {
-  for (const label of labels) {
-    const locator = page.getByRole("button", { name: label }).first();
-    if (await locator.count()) {
-      await locator.click({ timeout: 10000 });
-      return true;
-    }
+async function openPromptBuilderAndClickNew(page) {
+  const attempts = [];
 
-    const link = page.getByRole("link", { name: label }).first();
-    if (await link.count()) {
-      await link.click({ timeout: 10000 });
-      return true;
+  for (const path of PROMPT_BUILDER_HOME_PATHS) {
+    const promptHomeUrl = await getOrgOpenUrl(values["target-org"], path);
+    await page.goto(promptHomeUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
+    await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(5000);
+    await page.screenshot({
+      path: `${values.artifacts}/screenshots/PB-001-home-${path.includes("EinsteinPromptStudio") ? "studio" : "legacy"}.png`,
+      fullPage: true,
+    });
+
+    attempts.push({
+      path,
+      current_url: page.url(),
+      ...(await pageSummary(page)),
+    });
+
+    if (await clickIfPresent(page, [/new prompt template/i, /^new$/i, /create prompt template/i], { timeoutMs: 45000 })) {
+      await writeJsonFile(`${values.artifacts}/prompt-builder-navigation.json`, { attempts });
+      return;
     }
   }
 
-  throw new Error(`Could not find a clickable control matching: ${labels.join(", ")}`);
+  await writeJsonFile(`${values.artifacts}/prompt-builder-navigation.json`, { attempts });
+  throw new Error(
+    `Could not find a clickable Prompt Builder create control matching: /new prompt template/i, /^new$/i. Check PB-001 screenshots and prompt-builder-diagnostics.json for the rendered Salesforce page state.`,
+  );
 }
 
-async function clickIfPresent(page, labels) {
+async function completeTemplateTypeStep(page) {
+  await page.waitForTimeout(2000);
+  const text = await bodyText(page);
+
+  if (!/prompt template type|select.*template|template type/i.test(text)) {
+    return;
+  }
+
+  await clickIfPresent(page, [/^flex$/i, /flex template/i], { timeoutMs: 15000 });
+  await clickIfPresent(page, [/^next$/i, /continue/i], { timeoutMs: 15000 });
+  await page.waitForTimeout(3000);
+}
+
+async function clickFirst(page, labels, options = {}) {
+  const timeoutMs = options.timeoutMs || 60000;
+  const started = Date.now();
+  let lastError = null;
+
+  while (Date.now() - started < timeoutMs) {
+    for (const scope of pageScopes(page)) {
+      for (const locator of clickableLocators(scope, labels)) {
+        try {
+          if ((await locator.count()) === 0) {
+            continue;
+          }
+
+          await locator.first().click({ timeout: 5000 });
+          return true;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  const suffix = lastError ? ` Last click error: ${lastError.message}` : "";
+  throw new Error(`Could not find a clickable control matching: ${labels.join(", ")}.${suffix}`);
+}
+
+async function clickIfPresent(page, labels, options = {}) {
   try {
-    return await clickFirst(page, labels);
+    return await clickFirst(page, labels, options);
   } catch {
     return false;
   }
 }
 
-async function fillFirst(page, labels, value) {
-  for (const label of labels) {
-    const byLabel = page.getByLabel(label).first();
-    if (await byLabel.count()) {
-      await byLabel.fill(value, { timeout: 10000 });
-      return true;
+async function fillFirst(page, labels, value, options = {}) {
+  const timeoutMs = options.timeoutMs || 60000;
+  const started = Date.now();
+  let lastError = null;
+
+  while (Date.now() - started < timeoutMs) {
+    for (const scope of pageScopes(page)) {
+      for (const locator of fieldLocators(scope, labels)) {
+        try {
+          if ((await locator.count()) === 0) {
+            continue;
+          }
+
+          const field = locator.first();
+          await field.fill(value, { timeout: 5000 });
+          return true;
+        } catch (error) {
+          lastError = error;
+        }
+      }
     }
 
-    const placeholder = page.getByPlaceholder(label).first();
-    if (await placeholder.count()) {
-      await placeholder.fill(value, { timeout: 10000 });
-      return true;
-    }
+    await page.waitForTimeout(1000);
   }
 
-  throw new Error(`Could not find a field matching: ${labels.join(", ")}`);
+  const suffix = lastError ? ` Last fill error: ${lastError.message}` : "";
+  throw new Error(`Could not find a field matching: ${labels.join(", ")}.${suffix}`);
+}
+
+async function fillIfPresent(page, labels, value, options = {}) {
+  try {
+    return await fillFirst(page, labels, value, options);
+  } catch {
+    return false;
+  }
+}
+
+function clickableLocators(scope, labels) {
+  const locators = [];
+  for (const label of labels) {
+    locators.push(scope.getByRole("button", { name: label }));
+    locators.push(scope.getByRole("link", { name: label }));
+    locators.push(scope.getByTitle(label));
+    locators.push(scope.locator("button, a, [role='button'], input[type='button'], input[type='submit']").filter({ hasText: label }));
+    locators.push(scope.getByText(label, { exact: false }));
+  }
+  return locators;
+}
+
+function fieldLocators(scope, labels) {
+  const locators = [];
+  for (const label of labels) {
+    locators.push(scope.getByLabel(label));
+    locators.push(scope.getByPlaceholder(label));
+    locators.push(scope.locator("input, textarea, [contenteditable='true']").filter({ hasText: label }));
+  }
+
+  if (labelsMatch(labels, "prompt instructions system")) {
+    locators.push(scope.locator("textarea").last());
+    locators.push(scope.locator("[contenteditable='true']").last());
+  }
+
+  return locators;
+}
+
+function labelsMatch(labels, text) {
+  return labels.some((label) => (label instanceof RegExp ? label.test(text) : text.includes(String(label))));
+}
+
+function pageScopes(page) {
+  return [...new Set([page, ...page.frames()])];
+}
+
+async function bodyText(page) {
+  return page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
+}
+
+async function pageSummary(page) {
+  const buttons = await collectVisibleText(page, "button, [role='button'], input[type='button'], input[type='submit']");
+  const links = await collectVisibleText(page, "a");
+  return {
+    title: await page.title().catch(() => ""),
+    body_sample: (await bodyText(page)).slice(0, 2500),
+    buttons,
+    links,
+  };
+}
+
+async function collectVisibleText(page, selector) {
+  return page
+    .locator(selector)
+    .evaluateAll((elements) =>
+      elements
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        })
+        .map((element) => element.innerText || element.value || element.getAttribute("aria-label") || element.getAttribute("title") || "")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .slice(0, 50),
+    )
+    .catch(() => []);
+}
+
+async function captureDiagnostics(page, error) {
+  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-error.png`, fullPage: true }).catch(() => {});
+  await writeJsonFile(`${values.artifacts}/prompt-builder-diagnostics.json`, {
+    error: error.message,
+    current_url: page.url(),
+    ...(await pageSummary(page)),
+  });
 }
