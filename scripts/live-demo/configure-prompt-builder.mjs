@@ -1,25 +1,14 @@
 import { parseArgs } from "node:util";
-import { existsSync } from "node:fs";
-import { readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
 
-import { ensureDir, getOrgOpenUrl, querySalesforce, sfJson, writeJsonFile } from "./lib.mjs";
+import { ensureDir, getOrgOpenUrl, querySalesforce, writeJsonFile } from "./lib.mjs";
 
 const PROMPT_API_NAME = "IST_Inventory_Recommendation";
-const PROMPT_NAME = "IST Inventory Recommendation";
-const PROMPT_METADATA_API_VERSION = "66.0";
-const PROMPT_METADATA_SOURCE_DIR = "metadata/prompt-builder/genAiPromptTemplates";
-const PROMPT_MODEL_CANDIDATES = [
-  process.env.PROMPT_BUILDER_MODEL,
-  "sfdc_ai__DefaultGPT4Omni",
-  "sfdc_ai__DefaultGPT4OmniMini",
-  "sfdc_ai__DefaultOpenAIGPT4OmniMini",
-].filter(Boolean);
-const PROMPT_BUILDER_HOME_PATHS = [
-  "/lightning/setup/EinsteinPromptStudio/home",
-  "/lightning/setup/EinsteinGPTPromptTemplates/home",
-];
-const PROMPT_TEXT = `You are a US retail pharmacy inventory analyst assistant.
+const promptTemplate = {
+  name: "IST Inventory Recommendation",
+  apiName: PROMPT_API_NAME,
+  description:
+    "Analyzes inventory records and generates actionable recommendations following DEA compliance and stock level rules.",
+  text: `You are a US retail pharmacy inventory analyst assistant.
 Analyse the inventory record below and generate a concise, actionable
 recommendation in 1-2 sentences maximum.
 
@@ -47,7 +36,8 @@ RULES YOU MUST FOLLOW:
 6. Never recommend specific transfer quantities in this column.
 7. Keep the entire output under 150 characters.
 
-OUTPUT ONLY THE RECOMMENDATION TEXT.`;
+OUTPUT ONLY THE RECOMMENDATION TEXT.`,
+};
 
 const { values } = parseArgs({
   options: {
@@ -66,93 +56,52 @@ const before = await findPrompt(values["target-org"]);
 if (before.records.length > 0 && isActive(before.records[0])) {
   await writeJsonFile(`${values.artifacts}/prompt-builder.json`, {
     status: "already_active",
+    configured_by: "existing_active_prompt",
     prompt: before.records[0],
   });
   console.log(`${PROMPT_API_NAME} already exists and is active`);
   process.exit(0);
 }
 
-const metadataDeploy = await deployPromptTemplateMetadata(values["target-org"]);
-if (metadataDeploy.ok) {
-  const afterMetadataDeploy = await waitForPrompt(values["target-org"], { timeoutMs: 60000 });
-  if (afterMetadataDeploy.records.length > 0 && isActive(afterMetadataDeploy.records[0])) {
-    await writeJsonFile(`${values.artifacts}/prompt-builder.json`, {
-      status: "active",
-      configured_by: "metadata_deploy",
-      prompt: afterMetadataDeploy.records[0],
-    });
-    console.log(`${PROMPT_API_NAME} deployed and active from metadata`);
-    process.exit(0);
-  }
-
-  const activation = await activateRetrievedPromptTemplateVersion(values["target-org"]);
-  if (activation.ok) {
-    const afterActivation = await waitForPrompt(values["target-org"], { active: true, timeoutMs: 60000 });
-    if (afterActivation.records.length > 0 && isActive(afterActivation.records[0])) {
-      await writeJsonFile(`${values.artifacts}/prompt-builder.json`, {
-        status: "active",
-        configured_by: "metadata_deploy_and_retrieve_activate",
-        prompt: afterActivation.records[0],
-      });
-      console.log(`${PROMPT_API_NAME} deployed and activated from retrieved metadata`);
-      process.exit(0);
-    }
-  }
-}
-
 const { chromium } = await import("playwright");
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const captures = [];
+let uiResult;
 
 try {
-  await openPromptBuilderAndClickNew(page);
-  await page.waitForTimeout(3000);
-  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-002-new-template.png`, fullPage: true });
-
-  await completeTemplateTypeStep(page);
-  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-003-template-editor.png`, fullPage: true });
-
-  await fillFirst(page, [/name/i], PROMPT_NAME);
-  await fillIfPresent(page, [/api name/i, /developer name/i], PROMPT_API_NAME, { timeoutMs: 10000 });
-  await fillIfPresent(page, [/description/i], "Analyzes inventory rows and generates pharmacy IST recommendations.", {
-    timeoutMs: 10000,
-  });
-
-  if (!(await fillIfPresent(page, [/system prompt/i, /prompt/i, /instructions/i], PROMPT_TEXT, { timeoutMs: 10000 }))) {
-    await clickIfPresent(page, [/^next$/i, /continue/i], { timeoutMs: 15000 });
-    await page.waitForTimeout(3000);
-    await fillFirst(page, [/system prompt/i, /prompt/i, /instructions/i], PROMPT_TEXT);
-  }
-
-  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-004-filled-template.png`, fullPage: true });
-
-  await saveOrAdvancePromptTemplate(page);
-  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-005-saved-template.png`, fullPage: true });
-
-  await clickIfPresent(page, [/activate/i]);
-  await page.waitForTimeout(3000);
-  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-006-activation-attempt.png`, fullPage: true });
+  uiResult =
+    before.records.length > 0
+      ? await activateExistingPromptBuilderTemplate(page, captures)
+      : await createPromptBuilderTemplate(page, captures);
 } catch (error) {
-  await captureDiagnostics(page, error);
+  await captureDiagnostics(page, error, captures);
   throw error;
 } finally {
   await browser.close();
 }
 
 const after = await findPrompt(values["target-org"]);
+const active = after.records.length > 0 && isActive(after.records[0]);
+
 await writeJsonFile(`${values.artifacts}/prompt-builder.json`, {
-  status: after.records.length > 0 && isActive(after.records[0]) ? "active" : "not_active",
+  status: active ? "active" : "not_active",
+  configured_by: "prompt_builder_ui",
+  ui_result: uiResult,
   query_error: after.error,
   prompt: after.records[0] || null,
+  captures,
 });
 
-if (after.records.length === 0 || !isActive(after.records[0])) {
+if (!active) {
   throw new Error(
-    `Prompt Builder template ${PROMPT_API_NAME} is not active. Setup evidence screenshots were captured.`,
+    `Prompt Builder template ${PROMPT_API_NAME} is not active. ${
+      uiResult?.blocker || "Setup evidence screenshots were captured."
+    }`,
   );
 }
 
-console.log(`${PROMPT_API_NAME} created and active`);
+console.log(`${PROMPT_API_NAME} created and active through Prompt Builder UI`);
 
 async function findPrompt(targetOrg) {
   try {
@@ -170,447 +119,470 @@ function isActive(record) {
   return Number(record.ActiveVersion || 0) > 0;
 }
 
-async function deployPromptTemplateMetadata(targetOrg) {
-  try {
-    const output = await sfJson([
-      "project",
-      "deploy",
-      "start",
-      "--source-dir",
-      PROMPT_METADATA_SOURCE_DIR,
-      "--target-org",
-      targetOrg,
-      "--api-version",
-      PROMPT_METADATA_API_VERSION,
-      "--wait",
-      "30",
-    ]);
-    await writeJsonFile(`${values.artifacts}/prompt-builder-metadata-deploy.json`, {
-      status: "success",
-      source_dir: PROMPT_METADATA_SOURCE_DIR,
-      output,
-    });
-    return { ok: true, output };
-  } catch (error) {
-    await writeJsonFile(`${values.artifacts}/prompt-builder-metadata-deploy.json`, {
-      status: "failed",
-      source_dir: PROMPT_METADATA_SOURCE_DIR,
-      error: error.message,
-    });
-    console.warn(`Prompt template metadata deploy failed, falling back to UI automation: ${error.message}`);
-    return { ok: false, error };
-  }
-}
+async function createPromptBuilderTemplate(page, captures) {
+  const result = {
+    attempted: true,
+    promptCreated: false,
+    promptActivated: false,
+    route: null,
+    blocker: null,
+    observations: [],
+  };
 
-async function activateRetrievedPromptTemplateVersion(targetOrg) {
-  const retrieveRoot = join(values.artifacts, `prompt-template-retrieve-${Date.now()}`);
-  await ensureDir(retrieveRoot);
+  await openLightningPath(page, "/lightning/setup/SetupOneHome/home", 6000);
+  await capture(page, "PB-001_SetupHome.png", "Setup home before Prompt Builder search.", captures);
 
-  try {
-    const retrieveOutput = await sfJson([
-      "project",
-      "retrieve",
-      "start",
-      "--metadata",
-      `GenAiPromptTemplate:${PROMPT_API_NAME}`,
-      "--target-org",
-      targetOrg,
-      "--api-version",
-      PROMPT_METADATA_API_VERSION,
-      "--output-dir",
-      retrieveRoot,
-    ]);
+  const searchedTopSetup =
+    (await fillFirstUi(page, ["Search Setup"], "Prompt Builder")) ||
+    (await fillFirstUi(page, ["Search Setup"], "Prompt Templates"));
+  await page.keyboard.press("Enter").catch(() => {});
+  await page.waitForTimeout(4000);
+  await capture(page, "PB-002_SetupSearchPromptBuilder.png", "Top Setup search for Prompt Builder.", captures);
 
-    const retrievedPath = await findFile(retrieveRoot, `${PROMPT_API_NAME}.genAiPromptTemplate-meta.xml`);
-    if (!retrievedPath) {
-      throw new Error(`Retrieve did not produce ${PROMPT_API_NAME}.genAiPromptTemplate-meta.xml under ${retrieveRoot}`);
-    }
-
-    const retrievedXml = await readFile(retrievedPath, "utf8");
-    const versionIdentifier = getXmlValue(retrievedXml, "versionIdentifier");
-    if (!versionIdentifier) {
-      throw new Error(
-        "Retrieved prompt template metadata did not include a generated versionIdentifier. The template likely was not created successfully.",
-      );
-    }
-
-    const activationAttempts = [];
-    let activationOutput = null;
-    let activatedModel = null;
-
-    for (const model of PROMPT_MODEL_CANDIDATES) {
-      const modelXml = setOrInsertTemplateVersionXmlValue(retrievedXml, "primaryModel", model);
-      const activationXml = setOrInsertXmlValue(modelXml, "activeVersionIdentifier", versionIdentifier);
-      await writeFile(retrievedPath, activationXml, "utf8");
-
-      try {
-        activationOutput = await sfJson([
-          "project",
-          "deploy",
-          "start",
-          "--source-dir",
-          dirname(retrievedPath),
-          "--target-org",
-          targetOrg,
-          "--api-version",
-          PROMPT_METADATA_API_VERSION,
-          "--wait",
-          "30",
-        ]);
-        activatedModel = model;
-        activationAttempts.push({ model, status: "success" });
-        break;
-      } catch (error) {
-        activationAttempts.push({
-          model,
-          status: "failed",
-          error: error.message,
-        });
-      }
-    }
-
-    if (!activationOutput) {
-      throw new Error(
-        `Could not activate ${PROMPT_API_NAME} with any configured model. Attempts: ${JSON.stringify(activationAttempts)}`,
-      );
-    }
-
-    await writeJsonFile(`${values.artifacts}/prompt-builder-metadata-activation.json`, {
-      status: "success",
-      retrieveRoot,
-      retrievedPath,
-      versionIdentifier,
-      activatedModel,
-      activationAttempts,
-      retrieveOutput,
-      activationOutput,
-    });
-    return { ok: true, versionIdentifier, activatedModel, activationOutput };
-  } catch (error) {
-    await writeJsonFile(`${values.artifacts}/prompt-builder-metadata-activation.json`, {
-      status: "failed",
-      retrieveRoot,
-      error: error.message,
-    });
-    console.warn(`Prompt template metadata activation failed, falling back to UI automation: ${error.message}`);
-    return { ok: false, error };
-  }
-}
-
-async function waitForPrompt(targetOrg, options = {}) {
-  const timeoutMs = options.timeoutMs || 30000;
-  const started = Date.now();
-  let lastResult = { records: [] };
-
-  while (Date.now() - started < timeoutMs) {
-    lastResult = await findPrompt(targetOrg);
-    if (lastResult.records.length > 0 && (!options.active || isActive(lastResult.records[0]))) {
-      return lastResult;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+  if (searchedTopSetup) {
+    await clickFirstText(page, ["Prompt Builder", "Prompt Templates"], 4000);
+    await waitForLightning(page, 6000);
   }
 
-  return lastResult;
-}
+  const searchedQuickFind =
+    (await fillFirstUi(page, ["Quick Find"], "Prompt Builder")) ||
+    (await fillFirstUi(page, ["Quick Find"], "Prompt Templates"));
+  await page.waitForTimeout(2500);
+  await capture(page, "PB-003_SetupQuickFindPromptBuilder.png", "Left Quick Find search for Prompt Builder.", captures);
 
-async function findFile(root, fileName) {
-  if (!existsSync(root)) {
-    return null;
+  if (searchedQuickFind) {
+    await clickFirstText(page, ["Prompt Builder", "Prompt Templates"], 4000);
+    await waitForLightning(page, 6000);
   }
 
-  const entries = await readdir(root, { withFileTypes: true });
-  for (const entry of entries) {
-    const path = join(root, entry.name);
-    if (entry.isDirectory()) {
-      const nested = await findFile(path, fileName);
-      if (nested) {
-        return nested;
-      }
-    } else if (entry.name === fileName) {
-      return path;
-    }
-  }
-
-  return null;
-}
-
-function getXmlValue(xml, tagName) {
-  const match = xml.match(new RegExp(`<${tagName}>([^<]+)</${tagName}>`));
-  return match?.[1] || "";
-}
-
-function setOrInsertXmlValue(xml, tagName, value) {
-  const escapedValue = escapeXml(value);
-  const existing = new RegExp(`<${tagName}>[^<]*</${tagName}>`);
-
-  if (existing.test(xml)) {
-    return xml.replace(existing, `<${tagName}>${escapedValue}</${tagName}>`);
-  }
-
-  return xml.replace(
-    /(<GenAiPromptTemplate[^>]*>\s*)/,
-    `$1    <${tagName}>${escapedValue}</${tagName}>\n`,
-  );
-}
-
-function setOrInsertTemplateVersionXmlValue(xml, tagName, value) {
-  const escapedValue = escapeXml(value);
-  const existing = new RegExp(`<${tagName}>[^<]*</${tagName}>`);
-
-  if (existing.test(xml)) {
-    return xml.replace(existing, `<${tagName}>${escapedValue}</${tagName}>`);
-  }
-
-  return xml.replace(
-    /(<templateVersions>\s*)/,
-    `$1        <${tagName}>${escapedValue}</${tagName}>\n`,
-  );
-}
-
-function escapeXml(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-async function openPromptBuilderAndClickNew(page) {
-  const attempts = [];
-
-  for (const path of PROMPT_BUILDER_HOME_PATHS) {
-    const promptHomeUrl = await getOrgOpenUrl(values["target-org"], path);
-    await page.goto(promptHomeUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
-    await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
-    await page.waitForTimeout(5000);
-    await page.screenshot({
-      path: `${values.artifacts}/screenshots/PB-001-home-${path.includes("EinsteinPromptStudio") ? "studio" : "legacy"}.png`,
-      fullPage: true,
-    });
-
-    attempts.push({
-      path,
-      current_url: page.url(),
-      ...(await pageSummary(page)),
-    });
-
-    if (await clickIfPresent(page, [/new prompt template/i, /^new$/i, /create prompt template/i], { timeoutMs: 45000 })) {
-      await writeJsonFile(`${values.artifacts}/prompt-builder-navigation.json`, { attempts });
-      return;
-    }
-  }
-
-  await writeJsonFile(`${values.artifacts}/prompt-builder-navigation.json`, { attempts });
-  throw new Error(
-    `Could not find a clickable Prompt Builder create control matching: /new prompt template/i, /^new$/i. Check PB-001 screenshots and prompt-builder-diagnostics.json for the rendered Salesforce page state.`,
-  );
-}
-
-async function completeTemplateTypeStep(page) {
-  await page.waitForTimeout(2000);
-  const text = await bodyText(page);
-
-  if (!/prompt template type|select.*template|template type/i.test(text)) {
-    return;
-  }
-
-  await clickIfPresent(page, [/^flex$/i, /flex template/i], { timeoutMs: 15000 });
-  await clickIfPresent(page, [/^next$/i, /continue/i], { timeoutMs: 15000 });
-  await page.waitForTimeout(3000);
-}
-
-async function saveOrAdvancePromptTemplate(page) {
-  const labels = [
-    /save\s*&\s*preview/i,
-    /save\s+and\s+preview/i,
-    /^save$/i,
-    /save.*activate/i,
-    /save.*draft/i,
-    /^create$/i,
-    /create prompt template/i,
-    /^finish$/i,
-    /^done$/i,
-    /^next$/i,
-    /continue/i,
+  const directRoutes = [
+    "/lightning/setup/EinsteinPromptStudio/home",
+    "/lightning/setup/PromptBuilder/home",
+    "/lightning/setup/EinsteinGPTPromptTemplates/home",
+    "/lightning/setup/PromptTemplates/home",
+    "/lightning/setup/GenAiPromptTemplate/home",
   ];
 
-  for (let attempt = 1; attempt <= 4; attempt += 1) {
-    await clickFirst(page, labels, { timeoutMs: 30000 });
-    await page.waitForTimeout(5000);
+  let text = await allFrameText(page);
+  const isValidPromptBuilder = () =>
+    /New Prompt Template|Prompt Templates|Prompt Template Workspace|Manage Prompt Templates/i.test(text) &&
+    !/Page not found|page you requested was not found|This page doesn't exist|Page Not Available/i.test(text);
 
-    const prompt = await findPrompt(values["target-org"]);
-    if (prompt.records.length > 0) {
-      return;
+  for (let index = 0; index < directRoutes.length; index += 1) {
+    const route = directRoutes[index];
+    if (isValidPromptBuilder()) {
+      break;
     }
+
+    await openLightningPath(page, route, 5500);
+    text = await allFrameText(page);
+    result.observations.push({ route, text: text.slice(0, 1000) });
+    await capture(
+      page,
+      `PB-004_${String(index + 1).padStart(2, "0")}_DirectPromptBuilderRoute.png`,
+      `Prompt Builder direct route candidate: ${route}`,
+      captures,
+    );
   }
 
-  throw new Error("Prompt Builder save wizard did not create the expected AiPrompt record after four attempts.");
+  result.route = page.url();
+  await capture(page, "PB-005_PromptBuilderLanding.png", "Prompt Builder landing page candidate.", captures);
+  text = await allFrameText(page);
+
+  if (!isValidPromptBuilder()) {
+    result.blocker =
+      "Prompt Builder was not available from Setup Quick Find or the known direct setup routes in this scratch org.";
+    return result;
+  }
+
+  const clickedNew = await clickFirstText(page, ["New Prompt Template", "New"], 8000);
+  await waitForLightning(page, 4500);
+  await capture(page, "PB-006_NewPromptTemplateAttempt.png", "New prompt template attempt.", captures);
+
+  if (!clickedNew) {
+    result.blocker = "No New Prompt Template action was available in this scratch org UI.";
+    return result;
+  }
+
+  const selectedFieldGeneration = await selectPromptTemplateType(page);
+  let detailsFilled = await fillPromptTemplateDetails(page);
+  if (!detailsFilled) {
+    await clickFirstText(page, ["Next", "Continue"], 6000);
+    await waitForLightning(page, 3000);
+    detailsFilled = await fillPromptTemplateDetails(page);
+  }
+
+  if (!detailsFilled) {
+    result.blocker = "Prompt template name/details fields did not appear after selecting the template type.";
+    return result;
+  }
+
+  if (selectedFieldGeneration) {
+    await chooseComboboxValue(page, ["Object", "Related Entity", "Input Object"], "Inventory Position", 8000);
+    await chooseComboboxValue(page, ["Field", "Target Field"], "Recommendation Preview", 8000);
+  } else {
+    await addFlexInventoryInput(page, captures);
+  }
+
+  await capture(page, "PB-009_PromptTemplateDetailsFilled.png", "Prompt template details after automated fill attempt.", captures);
+
+  await clickFirstText(page, ["Next", "Continue"], 8000);
+  await waitForLightning(page, 5000);
+  await fillFirstTextArea(page, promptTemplate.text, 8000);
+  await capture(page, "PB-010_PromptWorkspaceFilled.png", "Prompt workspace after system prompt fill attempt.", captures);
+
+  await clickFirstText(page, ["Save & Preview", "Save and Preview", "Save"], 8000);
+  await waitForLightning(page, 8000);
+  await capture(page, "PB-011_PromptSaveResult.png", "Prompt template save result.", captures);
+
+  text = await allFrameText(page);
+  result.promptCreated =
+    /IST Inventory Recommendation|IST_Inventory_Recommendation|created successfully|saved|Version 1/i.test(text) &&
+    !/Template Errors|Complete this field|not recognized|Select an object|deprecated|not active/i.test(text);
+
+  if (!result.promptCreated) {
+    const prompt = await findPrompt(values["target-org"]);
+    result.promptCreated = prompt.records.length > 0;
+  }
+
+  if (result.promptCreated) {
+    const activation = await activateOpenPromptTemplate(page, captures, "PB-012_PromptActivateResult.png", "PB-013_PromptActivateFinalState.png");
+    result.promptActivated = activation.promptActivated;
+    result.blocker = activation.blocker;
+  }
+
+  if (!result.promptCreated) {
+    result.blocker = (await allFrameText(page)).slice(0, 1500);
+  }
+
+  return result;
 }
 
-async function clickFirst(page, labels, options = {}) {
-  const timeoutMs = options.timeoutMs || 60000;
-  const started = Date.now();
-  let lastError = null;
+async function fillPromptTemplateDetails(page) {
+  const nameFilled = await fillFirstUi(page, ["Prompt Template Name", "Template Name", "Name"], promptTemplate.name, 8000);
+  await fillFirstUi(page, ["API Name", "Developer Name"], promptTemplate.apiName, 3000);
+  await fillFirstUi(page, ["Template Description", "Description"], promptTemplate.description, 8000);
+  return nameFilled;
+}
 
-  while (Date.now() - started < timeoutMs) {
-    for (const scope of pageScopes(page)) {
-      for (const locator of clickableLocators(scope, labels)) {
+async function selectPromptTemplateType(page) {
+  return (
+    (await chooseComboboxValue(page, ["Prompt Template Type", "Template Type"], "Field Generation", 6000)) ||
+    (await clickFirstText(page, ["Field Generation"], 6000))
+  );
+}
+
+async function addFlexInventoryInput(page, captures) {
+  const clickedAdd = await clickFirstText(page, ["Add"], 4000);
+  await page.waitForTimeout(1200);
+  await capture(page, "PB-007_FlexInputAddAttempt.png", "Flex template Inventory Position input add attempt.", captures);
+
+  if (!clickedAdd) {
+    return false;
+  }
+
+  await fillFirstUi(page, ["Input Name", "Name"], "Inventory_Position__c", 5000);
+  await chooseComboboxValue(page, ["Source Type", "Input Type"], "Object", 5000);
+  await chooseComboboxValue(page, ["Object"], "Inventory Position", 5000);
+  await capture(page, "PB-008_FlexInputConfigured.png", "Flex template Inventory Position input configuration attempt.", captures);
+  return true;
+}
+
+async function activateExistingPromptBuilderTemplate(page, captures) {
+  const result = {
+    attempted: true,
+    promptCreated: true,
+    promptActivated: false,
+    route: null,
+    blocker: null,
+    observations: [],
+  };
+
+  await openLightningPath(page, "/lightning/setup/EinsteinPromptStudio/home", 7000);
+  await capture(page, "PB-ACT-001_PromptBuilderHome.png", "Prompt Builder home before activation search.", captures);
+
+  const searched =
+    (await fillFirstUi(page, ["Search templates", "Search templates..."], promptTemplate.name, 5000)) ||
+    (await fillFirstUi(page, ["Search"], promptTemplate.name, 5000));
+  await page.keyboard.press("Enter").catch(() => {});
+  await page.waitForTimeout(3500);
+  await capture(page, "PB-ACT-002_TemplateSearch.png", "Prompt Builder template search for existing IST template.", captures);
+
+  if (!searched) {
+    result.blocker = "Could not find the Prompt Builder template search box.";
+    return result;
+  }
+
+  const opened = await clickFirstText(page, [promptTemplate.name, PROMPT_API_NAME], 7000);
+  await waitForLightning(page, 7000);
+  await capture(page, "PB-ACT-003_TemplateOpened.png", "Existing IST prompt template opened.", captures);
+
+  if (!opened) {
+    result.blocker = "Could not open the saved IST Inventory Recommendation template from the Prompt Builder list.";
+    return result;
+  }
+
+  const activation = await activateOpenPromptTemplate(
+    page,
+    captures,
+    "PB-ACT-004_ActivateClicked.png",
+    "PB-ACT-005_ActivationFinalState.png",
+  );
+  result.route = page.url();
+  result.promptActivated = activation.promptActivated;
+  result.blocker = activation.blocker;
+  return result;
+}
+
+async function activateOpenPromptTemplate(page, captures, clickedFile, finalFile) {
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.waitForTimeout(500);
+  const clickedActivate = await clickExactButton(page, "Activate", 8000);
+  await waitForLightning(page, 5000);
+  await capture(page, clickedFile, "Prompt template Activate click result.", captures);
+
+  if (clickedActivate) {
+    await clickExactButton(page, "Activate", 6000) ||
+      (await clickExactButton(page, "Confirm", 6000)) ||
+      (await clickExactButton(page, "Save", 6000));
+    await waitForLightning(page, 7000);
+  }
+
+  await capture(page, finalFile, "Prompt template final activation state.", captures);
+  const text = await allFrameText(page);
+  const activateButtonCount = await page.locator('button:has-text("Activate")').count().catch(() => 0);
+  const promptActivated =
+    /Deactivate|Version Activated|Activated successfully|Version 1 \(Active\)|Active/i.test(text) ||
+    (clickedActivate && activateButtonCount === 0);
+
+  return {
+    promptActivated,
+    blocker: promptActivated ? null : text.slice(0, 1500),
+  };
+}
+
+async function openLightningPath(page, path, waitMs) {
+  const url = await getOrgOpenUrl(values["target-org"], path);
+  await page.goto(url, { waitUntil: "load", timeout: 120000 });
+  await waitForLightning(page, waitMs);
+}
+
+async function waitForLightning(page, waitMs = 7000) {
+  await page.waitForLoadState("load", { timeout: 90000 }).catch(() => {});
+  await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(waitMs);
+}
+
+async function capture(page, fileName, note, captures) {
+  const outputPath = `${values.artifacts}/screenshots/${fileName}`;
+  await page.screenshot({ path: outputPath, fullPage: true });
+  captures.push({ file: outputPath, note, url: page.url() });
+  console.log(`Captured ${fileName}: ${note}`);
+  return outputPath;
+}
+
+async function allFrameText(page) {
+  const parts = [];
+  for (const frame of page.frames()) {
+    try {
+      const text = await frame.evaluate(() => document.body?.innerText || "");
+      if (text.trim()) {
+        parts.push(text);
+      }
+    } catch {
+      // Cross-origin or detached frames can be ignored for text evidence.
+    }
+  }
+  return parts.join("\n").replace(/\s+/g, " ").trim();
+}
+
+async function clickFirstText(page, labels, timeoutMs = 2500) {
+  for (const frame of page.frames()) {
+    for (const label of labels) {
+      const candidates = [
+        frame.getByRole("button", { name: label, exact: false }),
+        frame.getByRole("link", { name: label, exact: false }),
+        frame.getByText(label, { exact: false }),
+      ];
+
+      for (const locator of candidates) {
         try {
-          if (await clickVisibleEnabled(locator)) {
+          if (await clickVisibleLocator(locator, timeoutMs)) {
             return true;
           }
-        } catch (error) {
-          lastError = error;
+        } catch {
+          // Try the next label/locator.
         }
       }
     }
-
-    await page.waitForTimeout(1000);
   }
-
-  const suffix = lastError ? ` Last click error: ${lastError.message}` : "";
-  throw new Error(`Could not find a clickable control matching: ${labels.join(", ")}.${suffix}`);
+  return false;
 }
 
-async function clickIfPresent(page, labels, options = {}) {
-  try {
-    return await clickFirst(page, labels, options);
-  } catch {
-    return false;
-  }
-}
+async function clickExactButton(page, label, timeoutMs = 5000) {
+  for (const frame of page.frames()) {
+    const candidates = [
+      frame.getByRole("button", { name: label, exact: true }),
+      frame.locator(`button:has-text("${label}")`),
+      frame.locator(`lightning-button:has-text("${label}") button`),
+    ];
 
-async function fillFirst(page, labels, value, options = {}) {
-  const timeoutMs = options.timeoutMs || 60000;
-  const started = Date.now();
-  let lastError = null;
-
-  while (Date.now() - started < timeoutMs) {
-    for (const scope of pageScopes(page)) {
-      for (const locator of fieldLocators(scope, labels)) {
-        try {
-          if ((await locator.count()) === 0) {
+    for (const locator of candidates) {
+      try {
+        const count = Math.min(await locator.count(), 10);
+        for (let index = 0; index < count; index += 1) {
+          const candidate = locator.nth(index);
+          if (!(await candidate.isVisible().catch(() => false))) {
             continue;
           }
-
-          const field = locator.first();
-          await field.fill(value, { timeout: 5000 });
+          await candidate.click({ force: true, timeout: timeoutMs });
+          await page.waitForTimeout(1000);
           return true;
-        } catch (error) {
-          lastError = error;
         }
+      } catch {
+        // Try the next button candidate.
       }
     }
-
-    await page.waitForTimeout(1000);
   }
-
-  const suffix = lastError ? ` Last fill error: ${lastError.message}` : "";
-  throw new Error(`Could not find a field matching: ${labels.join(", ")}.${suffix}`);
+  return false;
 }
 
-async function fillIfPresent(page, labels, value, options = {}) {
-  try {
-    return await fillFirst(page, labels, value, options);
-  } catch {
-    return false;
-  }
-}
-
-function clickableLocators(scope, labels) {
-  const locators = [];
-  for (const label of labels) {
-    locators.push(scope.getByRole("button", { name: label }));
-    locators.push(scope.getByRole("link", { name: label }));
-    locators.push(scope.getByTitle(label));
-    locators.push(scope.locator("button, a, [role='button'], input[type='button'], input[type='submit']").filter({ hasText: label }));
-  }
-  return locators;
-}
-
-async function clickVisibleEnabled(locator) {
-  const count = Math.min(await locator.count(), 25);
-
+async function clickVisibleLocator(locator, timeoutMs) {
+  const count = Math.min(await locator.count(), 20);
   for (let index = 0; index < count; index += 1) {
     const candidate = locator.nth(index);
-
     if (!(await candidate.isVisible().catch(() => false))) {
       continue;
     }
-
     if (await candidate.isDisabled().catch(() => false)) {
       continue;
     }
-
-    await candidate.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
-    await candidate.click({ timeout: 5000 });
+    await candidate.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+    await candidate.click({ timeout: timeoutMs });
+    await new Promise((resolve) => setTimeout(resolve, 800));
     return true;
+  }
+  return false;
+}
+
+async function fillFirstUi(page, labels, value, timeoutMs = 2500) {
+  for (const frame of page.frames()) {
+    for (const label of labels) {
+      const candidates = [
+        frame.getByLabel(label, { exact: false }),
+        frame.getByPlaceholder(label, { exact: false }),
+      ];
+
+      for (const locator of candidates) {
+        try {
+          const count = await locator.count();
+          if (count > 0) {
+            await locator.first().fill(value, { timeout: timeoutMs });
+            return true;
+          }
+        } catch {
+          // Try the next field.
+        }
+      }
+    }
+  }
+  return false;
+}
+
+async function fillFirstTextArea(page, value, timeoutMs = 2500) {
+  for (const frame of page.frames()) {
+    const candidates = [
+      frame.locator("textarea"),
+      frame.locator("[contenteditable='true']"),
+      frame.locator(".ql-editor"),
+      frame.locator("lightning-textarea textarea"),
+    ];
+
+    for (const locator of candidates) {
+      try {
+        const count = await locator.count();
+        if (count > 0) {
+          await locator.first().fill(value, { timeout: timeoutMs });
+          return true;
+        }
+      } catch {
+        // Try the next editor.
+      }
+    }
+  }
+  return false;
+}
+
+async function chooseComboboxValue(page, labels, value, timeoutMs = 2500) {
+  async function clickVisibleOption() {
+    for (const frame of page.frames()) {
+      const optionLocators = [
+        frame.locator(`lightning-base-combobox-item:has-text("${value}")`),
+        frame.locator(`[role="option"]:has-text("${value}")`),
+        frame.getByRole("option", { name: value, exact: false }),
+        frame.getByText(value, { exact: true }),
+      ];
+
+      for (const option of optionLocators) {
+        try {
+          if (await clickVisibleLocator(option, timeoutMs)) {
+            await page.waitForTimeout(800);
+            return true;
+          }
+        } catch {
+          // Try the next visible option candidate.
+        }
+      }
+    }
+    return false;
+  }
+
+  for (const frame of page.frames()) {
+    for (const label of labels) {
+      const candidates = [
+        frame.getByRole("combobox", { name: label, exact: false }),
+        frame.getByLabel(label, { exact: false }),
+        frame.locator(`lightning-combobox:has-text("${label}")`),
+        frame.locator(`select[aria-label*="${label}"]`),
+      ];
+
+      for (const locator of candidates) {
+        try {
+          const count = await locator.count();
+          if (count > 0) {
+            await locator.first().click({ timeout: timeoutMs });
+            await page.waitForTimeout(800);
+            try {
+              await locator.first().fill(value, { timeout: 1000 });
+              await page.waitForTimeout(1000);
+            } catch {
+              try {
+                await page.keyboard.type(value, { delay: 20 });
+                await page.waitForTimeout(1000);
+              } catch {
+                // Some combobox buttons cannot accept text; rely on visible options.
+              }
+            }
+            if ((await clickVisibleOption()) || (await clickFirstText(page, [value], timeoutMs))) {
+              return true;
+            }
+          }
+        } catch {
+          // Try the next combobox candidate.
+        }
+      }
+    }
   }
 
   return false;
 }
 
-function fieldLocators(scope, labels) {
-  const locators = [];
-  for (const label of labels) {
-    locators.push(scope.getByLabel(label));
-    locators.push(scope.getByPlaceholder(label));
-    locators.push(scope.locator("input, textarea, [contenteditable='true']").filter({ hasText: label }));
-  }
-
-  if (labelsMatch(labels, "prompt instructions system")) {
-    locators.push(scope.locator("textarea").last());
-    locators.push(scope.locator("[contenteditable='true']").last());
-  }
-
-  return locators;
-}
-
-function labelsMatch(labels, text) {
-  return labels.some((label) => (label instanceof RegExp ? label.test(text) : text.includes(String(label))));
-}
-
-function pageScopes(page) {
-  return [...new Set([page, ...page.frames()])];
-}
-
-async function bodyText(page) {
-  return page.locator("body").innerText({ timeout: 10000 }).catch(() => "");
-}
-
-async function pageSummary(page) {
-  const buttons = await collectVisibleText(page, "button, [role='button'], input[type='button'], input[type='submit']");
-  const links = await collectVisibleText(page, "a");
-  return {
-    title: await page.title().catch(() => ""),
-    body_sample: (await bodyText(page)).slice(0, 2500),
-    buttons,
-    links,
-  };
-}
-
-async function collectVisibleText(page, selector) {
-  return page
-    .locator(selector)
-    .evaluateAll((elements) =>
-      elements
-        .filter((element) => {
-          const rect = element.getBoundingClientRect();
-          return rect.width > 0 && rect.height > 0;
-        })
-        .map((element) => element.innerText || element.value || element.getAttribute("aria-label") || element.getAttribute("title") || "")
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .slice(0, 50),
-    )
-    .catch(() => []);
-}
-
-async function captureDiagnostics(page, error) {
-  await page.screenshot({ path: `${values.artifacts}/screenshots/PB-error.png`, fullPage: true }).catch(() => {});
+async function captureDiagnostics(page, error, captures) {
+  await capture(page, "PB-error.png", `Prompt Builder automation failed: ${error.message}`, captures).catch(() => {});
   await writeJsonFile(`${values.artifacts}/prompt-builder-diagnostics.json`, {
     error: error.message,
     current_url: page.url(),
-    ...(await pageSummary(page)),
+    body_sample: (await allFrameText(page)).slice(0, 2500),
+    captures,
   });
 }

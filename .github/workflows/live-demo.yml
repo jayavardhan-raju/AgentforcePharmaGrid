@@ -13,7 +13,6 @@ env:
   SCRATCH_ORG_DURATION_DAYS: ${{ github.event.client_payload.scratch_org_duration_days || '30' }}
   SCRATCH_ALIAS: pharmagrid-demo-${{ github.run_id }}
   ARTIFACT_DIR: artifacts/live-demo/${{ github.run_id }}
-  PROMPT_BUILDER_MODEL: ${{ vars.PROMPT_BUILDER_MODEL || 'sfdc_ai__DefaultGPT4Omni' }}
 
 jobs:
   provision:
