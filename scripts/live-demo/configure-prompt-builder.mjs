@@ -236,9 +236,7 @@ async function createPromptBuilderTemplate(page, captures) {
   await capture(page, "PB-011_PromptSaveResult.png", "Prompt template save result.", captures);
 
   text = await allFrameText(page);
-  result.promptCreated =
-    /IST Inventory Recommendation|IST_Inventory_Recommendation|created successfully|saved|Version 1/i.test(text) &&
-    !/Template Errors|Complete this field|not recognized|Select an object|deprecated|not active/i.test(text);
+  result.promptCreated = hasSavedPromptTemplate(text);
 
   if (!result.promptCreated) {
     const prompt = await findPrompt(values["target-org"]);
@@ -246,7 +244,12 @@ async function createPromptBuilderTemplate(page, captures) {
   }
 
   if (result.promptCreated) {
-    const activation = await activateOpenPromptTemplate(page, captures, "PB-012_PromptActivateResult.png", "PB-013_PromptActivateFinalState.png");
+    const activation = await activateOpenPromptTemplate(
+      page,
+      captures,
+      "PB-012_PromptActivateResult.png",
+      "PB-013_PromptActivateFinalState.png",
+    );
     result.promptActivated = activation.promptActivated;
     result.blocker = activation.blocker;
   }
@@ -350,15 +353,26 @@ async function activateOpenPromptTemplate(page, captures, clickedFile, finalFile
 
   await capture(page, finalFile, "Prompt template final activation state.", captures);
   const text = await allFrameText(page);
-  const activateButtonCount = await page.locator('button:has-text("Activate")').count().catch(() => 0);
+  const activateButtonCount = await countVisibleExactButtons(page, "Activate");
+  const deactivateButtonCount = await countVisibleExactButtons(page, "Deactivate");
   const promptActivated =
-    /Deactivate|Version Activated|Activated successfully|Version 1 \(Active\)|Active/i.test(text) ||
-    (clickedActivate && activateButtonCount === 0);
+    deactivateButtonCount > 0 ||
+    /Version Activated|Activated successfully|Version\s+\d+\s+\(Active\)/i.test(text) ||
+    (clickedActivate && activateButtonCount === 0 && !/VersionDeactivatedToastMsg/i.test(text));
 
   return {
     promptActivated,
     blocker: promptActivated ? null : text.slice(0, 1500),
   };
+}
+
+function hasSavedPromptTemplate(text) {
+  const hasPromptIdentity = /IST Inventory Recommendation|IST_Inventory_Recommendation/i.test(text);
+  const hasSavedWorkspace = /created successfully|saved|Version\s+\d+|Prompt Template Workspace|Activate|Save As|Delete Version/i.test(
+    text,
+  );
+  const hasBlockingCreationError = /Template Errors|not recognized|Select an object|deprecated/i.test(text);
+  return hasPromptIdentity && hasSavedWorkspace && !hasBlockingCreationError;
 }
 
 async function openLightningPath(page, path, waitMs) {
@@ -445,6 +459,34 @@ async function clickExactButton(page, label, timeoutMs = 5000) {
     }
   }
   return false;
+}
+
+async function countVisibleExactButtons(page, label) {
+  let count = 0;
+  const exactText = new RegExp(`^\\s*${escapeRegExp(label)}\\s*$`);
+  for (const frame of page.frames()) {
+    const candidates = [
+      frame.getByRole("button", { name: label, exact: true }),
+      frame.locator("button").filter({ hasText: exactText }),
+    ];
+    for (const locator of candidates) {
+      try {
+        const locatorCount = Math.min(await locator.count(), 10);
+        for (let index = 0; index < locatorCount; index += 1) {
+          if (await locator.nth(index).isVisible().catch(() => false)) {
+            count += 1;
+          }
+        }
+      } catch {
+        // Try the next button candidate.
+      }
+    }
+  }
+  return count;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function clickVisibleLocator(locator, timeoutMs) {
