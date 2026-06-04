@@ -34,7 +34,7 @@ try {
     "-i",
     join(frameDir, "frame-%04d.png"),
     "-vf",
-    "scale=1280:-1:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=white,fps=1",
+    "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=white,fps=1",
     "-loop",
     "0",
     outputPath,

@@ -87,8 +87,7 @@ try {
 
   await page.screenshot({ path: `${values.artifacts}/screenshots/PB-004-filled-template.png`, fullPage: true });
 
-  await clickFirst(page, [/save/i, /create/i]);
-  await page.waitForTimeout(5000);
+  await saveOrAdvancePromptTemplate(page);
   await page.screenshot({ path: `${values.artifacts}/screenshots/PB-005-saved-template.png`, fullPage: true });
 
   await clickIfPresent(page, [/activate/i]);
@@ -176,6 +175,32 @@ async function completeTemplateTypeStep(page) {
   await page.waitForTimeout(3000);
 }
 
+async function saveOrAdvancePromptTemplate(page) {
+  const labels = [
+    /^save$/i,
+    /save.*activate/i,
+    /save.*draft/i,
+    /^create$/i,
+    /create prompt template/i,
+    /^finish$/i,
+    /^done$/i,
+    /^next$/i,
+    /continue/i,
+  ];
+
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    await clickFirst(page, labels, { timeoutMs: 30000 });
+    await page.waitForTimeout(5000);
+
+    const prompt = await findPrompt(values["target-org"]);
+    if (prompt.records.length > 0) {
+      return;
+    }
+  }
+
+  throw new Error("Prompt Builder save wizard did not create the expected AiPrompt record after four attempts.");
+}
+
 async function clickFirst(page, labels, options = {}) {
   const timeoutMs = options.timeoutMs || 60000;
   const started = Date.now();
@@ -185,12 +210,9 @@ async function clickFirst(page, labels, options = {}) {
     for (const scope of pageScopes(page)) {
       for (const locator of clickableLocators(scope, labels)) {
         try {
-          if ((await locator.count()) === 0) {
-            continue;
+          if (await clickVisibleEnabled(locator)) {
+            return true;
           }
-
-          await locator.first().click({ timeout: 5000 });
-          return true;
         } catch (error) {
           lastError = error;
         }
@@ -256,9 +278,30 @@ function clickableLocators(scope, labels) {
     locators.push(scope.getByRole("link", { name: label }));
     locators.push(scope.getByTitle(label));
     locators.push(scope.locator("button, a, [role='button'], input[type='button'], input[type='submit']").filter({ hasText: label }));
-    locators.push(scope.getByText(label, { exact: false }));
   }
   return locators;
+}
+
+async function clickVisibleEnabled(locator) {
+  const count = Math.min(await locator.count(), 25);
+
+  for (let index = 0; index < count; index += 1) {
+    const candidate = locator.nth(index);
+
+    if (!(await candidate.isVisible().catch(() => false))) {
+      continue;
+    }
+
+    if (await candidate.isDisabled().catch(() => false)) {
+      continue;
+    }
+
+    await candidate.scrollIntoViewIfNeeded({ timeout: 3000 }).catch(() => {});
+    await candidate.click({ timeout: 5000 });
+    return true;
+  }
+
+  return false;
 }
 
 function fieldLocators(scope, labels) {
