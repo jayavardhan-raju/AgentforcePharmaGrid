@@ -1,8 +1,7 @@
 import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { tmpdir } from "node:os";
 
 import { ensureDir, getOrgOpenUrl, querySalesforce, sfJson, writeJsonFile } from "./lib.mjs";
 
@@ -198,7 +197,8 @@ async function deployPromptTemplateMetadata(targetOrg) {
 }
 
 async function activateRetrievedPromptTemplateVersion(targetOrg) {
-  const retrieveRoot = await mkdtemp(join(tmpdir(), "pharmagrid-prompt-retrieve-"));
+  const retrieveRoot = join(values.artifacts, `prompt-template-retrieve-${Date.now()}`);
+  await ensureDir(retrieveRoot);
 
   try {
     const retrieveOutput = await sfJson([
