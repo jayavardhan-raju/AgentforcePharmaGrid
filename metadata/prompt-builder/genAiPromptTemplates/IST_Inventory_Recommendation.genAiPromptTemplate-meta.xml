@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GenAiPromptTemplate xmlns="http://soap.sforce.com/2006/04/metadata">
+    <activeVersion>1</activeVersion>
+    <description>Analyzes inventory rows and generates pharmacy IST recommendations.</description>
+    <developerName>IST_Inventory_Recommendation</developerName>
+    <masterLabel>IST Inventory Recommendation</masterLabel>
+    <relatedEntity>Inventory_Position__c</relatedEntity>
+    <templateVersions>
+        <content>You are a US retail pharmacy inventory analyst assistant.
+Analyse the inventory record below and generate a concise, actionable
+recommendation in 1-2 sentences maximum.
+
+INVENTORY RECORD:
+- Record ID: {!$Input:Inventory_Position__c.Id}
+- Store: {!$Input:Inventory_Position__c.Store__r.Name}
+- Medication: {!$Input:Inventory_Position__c.Medication__r.Name}
+- DEA Schedule: {!$Input:Inventory_Position__c.Medication__r.DEA_Schedule__c}
+- Cold Chain Required: {!$Input:Inventory_Position__c.Medication__r.Cold_Chain_Required__c}
+- Current Quantity: {!$Input:Inventory_Position__c.Quantity__c}
+- Safety Stock Level: {!$Input:Inventory_Position__c.Safety_Stock__c}
+- Expiry Date: {!$Input:Inventory_Position__c.Expiry_Date__c}
+- Status: {!$Input:Inventory_Position__c.Status__c}
+
+RULES YOU MUST FOLLOW:
+1. If DEA Schedule is "II" output exactly:
+"Schedule II: Manual DEA Form 222 transfer required. No automated action available."
+2. If Status is "Critical" or "OUT_OF_STOCK" and DEA Schedule is not "II" output:
+"Critical stock. Recommend initiating inter-store transfer via Transfer/Optimize action."
+3. If stock is adequate but below double safety stock output:
+"Stock adequate but approaching reorder threshold. Monitor closely."
+4. If stock is healthy output:
+"Stock levels healthy. No action required at this time."
+5. If Expiry Date is within 30 days from today prefix your output with "EXPIRY ALERT: ".
+6. Never recommend specific transfer quantities in this column.
+7. Keep the entire output under 150 characters.
+
+OUTPUT ONLY THE RECOMMENDATION TEXT.</content>
+        <inputs>
+            <apiName>RelatedEntity</apiName>
+            <definition>SOBJECT://Inventory_Position__c</definition>
+            <masterLabel>Inventory Position</masterLabel>
+            <referenceName>Input:Inventory_Position__c</referenceName>
+            <required>true</required>
+        </inputs>
+        <primaryModel>sfdc_ai__DefaultOpenAIGPT4</primaryModel>
+        <status>Published</status>
+        <versionNumber>1</versionNumber>
+    </templateVersions>
+    <type>einstein_gpt__flex</type>
+    <visibility>Global</visibility>
+</GenAiPromptTemplate>

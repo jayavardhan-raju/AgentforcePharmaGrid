@@ -1,9 +1,10 @@
 import { parseArgs } from "node:util";
 
-import { ensureDir, getOrgOpenUrl, querySalesforce, writeJsonFile } from "./lib.mjs";
+import { ensureDir, getOrgOpenUrl, querySalesforce, sfJson, writeJsonFile } from "./lib.mjs";
 
 const PROMPT_API_NAME = "IST_Inventory_Recommendation";
 const PROMPT_NAME = "IST Inventory Recommendation";
+const PROMPT_METADATA_SOURCE_DIR = "metadata/prompt-builder/genAiPromptTemplates";
 const PROMPT_BUILDER_HOME_PATHS = [
   "/lightning/setup/EinsteinPromptStudio/home",
   "/lightning/setup/EinsteinGPTPromptTemplates/home",
@@ -59,6 +60,20 @@ if (before.records.length > 0 && isActive(before.records[0])) {
   });
   console.log(`${PROMPT_API_NAME} already exists and is active`);
   process.exit(0);
+}
+
+const metadataDeploy = await deployPromptTemplateMetadata(values["target-org"]);
+if (metadataDeploy.ok) {
+  const afterMetadataDeploy = await waitForPrompt(values["target-org"], { active: true, timeoutMs: 60000 });
+  if (afterMetadataDeploy.records.length > 0 && isActive(afterMetadataDeploy.records[0])) {
+    await writeJsonFile(`${values.artifacts}/prompt-builder.json`, {
+      status: "active",
+      configured_by: "metadata_deploy",
+      prompt: afterMetadataDeploy.records[0],
+    });
+    console.log(`${PROMPT_API_NAME} deployed and active from metadata`);
+    process.exit(0);
+  }
 }
 
 const { chromium } = await import("playwright");
@@ -131,6 +146,53 @@ function isActive(record) {
   return Number(record.ActiveVersion || 0) > 0;
 }
 
+async function deployPromptTemplateMetadata(targetOrg) {
+  try {
+    const output = await sfJson([
+      "project",
+      "deploy",
+      "start",
+      "--source-dir",
+      PROMPT_METADATA_SOURCE_DIR,
+      "--target-org",
+      targetOrg,
+      "--wait",
+      "30",
+    ]);
+    await writeJsonFile(`${values.artifacts}/prompt-builder-metadata-deploy.json`, {
+      status: "success",
+      source_dir: PROMPT_METADATA_SOURCE_DIR,
+      output,
+    });
+    return { ok: true, output };
+  } catch (error) {
+    await writeJsonFile(`${values.artifacts}/prompt-builder-metadata-deploy.json`, {
+      status: "failed",
+      source_dir: PROMPT_METADATA_SOURCE_DIR,
+      error: error.message,
+    });
+    console.warn(`Prompt template metadata deploy failed, falling back to UI automation: ${error.message}`);
+    return { ok: false, error };
+  }
+}
+
+async function waitForPrompt(targetOrg, options = {}) {
+  const timeoutMs = options.timeoutMs || 30000;
+  const started = Date.now();
+  let lastResult = { records: [] };
+
+  while (Date.now() - started < timeoutMs) {
+    lastResult = await findPrompt(targetOrg);
+    if (lastResult.records.length > 0 && (!options.active || isActive(lastResult.records[0]))) {
+      return lastResult;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+
+  return lastResult;
+}
+
 async function openPromptBuilderAndClickNew(page) {
   const attempts = [];
 
@@ -177,6 +239,8 @@ async function completeTemplateTypeStep(page) {
 
 async function saveOrAdvancePromptTemplate(page) {
   const labels = [
+    /save\s*&\s*preview/i,
+    /save\s+and\s+preview/i,
     /^save$/i,
     /save.*activate/i,
     /save.*draft/i,
