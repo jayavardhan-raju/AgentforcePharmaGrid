@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <GenAiPromptTemplate xmlns="http://soap.sforce.com/2006/04/metadata">
-    <activeVersion>1</activeVersion>
+    <activeVersionIdentifier>IST_Inventory_Recommendation_v1</activeVersionIdentifier>
     <description>Analyzes inventory rows and generates pharmacy IST recommendations.</description>
     <developerName>IST_Inventory_Recommendation</developerName>
     <masterLabel>IST Inventory Recommendation</masterLabel>
@@ -44,7 +44,7 @@ OUTPUT ONLY THE RECOMMENDATION TEXT.</content>
         </inputs>
         <primaryModel>sfdc_ai__DefaultOpenAIGPT4</primaryModel>
         <status>Published</status>
-        <versionNumber>1</versionNumber>
+        <versionIdentifier>IST_Inventory_Recommendation_v1</versionIdentifier>
     </templateVersions>
     <type>einstein_gpt__flex</type>
     <visibility>Global</visibility>

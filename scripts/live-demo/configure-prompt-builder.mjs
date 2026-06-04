@@ -4,6 +4,7 @@ import { ensureDir, getOrgOpenUrl, querySalesforce, sfJson, writeJsonFile } from
 
 const PROMPT_API_NAME = "IST_Inventory_Recommendation";
 const PROMPT_NAME = "IST Inventory Recommendation";
+const PROMPT_METADATA_API_VERSION = "66.0";
 const PROMPT_METADATA_SOURCE_DIR = "metadata/prompt-builder/genAiPromptTemplates";
 const PROMPT_BUILDER_HOME_PATHS = [
   "/lightning/setup/EinsteinPromptStudio/home",
@@ -156,6 +157,8 @@ async function deployPromptTemplateMetadata(targetOrg) {
       PROMPT_METADATA_SOURCE_DIR,
       "--target-org",
       targetOrg,
+      "--api-version",
+      PROMPT_METADATA_API_VERSION,
       "--wait",
       "30",
     ]);
