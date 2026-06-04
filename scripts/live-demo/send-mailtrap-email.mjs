@@ -31,6 +31,9 @@ const credentials = values.credentials && existsSync(values.credentials)
 const scenarioResults = existsSync(`${values.artifacts}/scenario-results.json`)
   ? await readJsonFile(`${values.artifacts}/scenario-results.json`)
   : null;
+const scratchSelection = existsSync(`${values.artifacts}/scratch-org-selection.json`)
+  ? await readJsonFile(`${values.artifacts}/scratch-org-selection.json`)
+  : null;
 
 const runUrl = githubRunUrl();
 const artifactUrl = process.env.ARTIFACT_URL || runUrl;
@@ -44,6 +47,7 @@ const text = buildText({
   payload,
   credentials,
   scenarioResults,
+  scratchSelection,
   runUrl,
   artifactUrl,
   success,
@@ -53,6 +57,7 @@ const html = buildHtml({
   payload,
   credentials,
   scenarioResults,
+  scratchSelection,
   runUrl,
   artifactUrl,
   success,
@@ -97,7 +102,16 @@ if (!response.ok) {
 
 console.log(`Mailtrap email sent to ${payload.email}`);
 
-function buildText({ payload, credentials, scenarioResults, runUrl, artifactUrl, success, durationDays }) {
+function buildText({
+  payload,
+  credentials,
+  scenarioResults,
+  scratchSelection,
+  runUrl,
+  artifactUrl,
+  success,
+  durationDays,
+}) {
   const lines = [
     `Hi ${payload.name},`,
     "",
@@ -125,6 +139,14 @@ function buildText({ payload, credentials, scenarioResults, runUrl, artifactUrl,
     );
   }
 
+  if (scratchSelection) {
+    lines.push(
+      `Scratch org mode: requested ${scratchSelection.requested_mode}, ${scratchSelection.effective_mode}.`,
+      scratchSelection.fallback_reason ? `Fallback reason: ${scratchSelection.fallback_reason}` : "",
+      "",
+    );
+  }
+
   lines.push(
     `Artifacts: ${artifactUrl}`,
     `Run log: ${runUrl}`,
@@ -137,7 +159,16 @@ function buildText({ payload, credentials, scenarioResults, runUrl, artifactUrl,
   return lines.join("\n");
 }
 
-function buildHtml({ payload, credentials, scenarioResults, runUrl, artifactUrl, success, durationDays }) {
+function buildHtml({
+  payload,
+  credentials,
+  scenarioResults,
+  scratchSelection,
+  runUrl,
+  artifactUrl,
+  success,
+  durationDays,
+}) {
   const credentialRows = credentials
     ? `
       <h2>Scratch Org Credentials</h2>
@@ -152,6 +183,11 @@ function buildHtml({ payload, credentials, scenarioResults, runUrl, artifactUrl,
   const scenarios = scenarioResults
     ? `<p><strong>Scenario summary:</strong> ${scenarioResults.passed || 0} passed, ${scenarioResults.failed || 0} failed.</p>`
     : "";
+  const scratchMode = scratchSelection
+    ? `<p><strong>Scratch org mode:</strong> requested ${escapeHtml(scratchSelection.requested_mode)}, ${escapeHtml(scratchSelection.effective_mode)}.${
+        scratchSelection.fallback_reason ? ` ${escapeHtml(scratchSelection.fallback_reason)}` : ""
+      }</p>`
+    : "";
 
   return `
     <p>Hi ${escapeHtml(payload.name)},</p>
@@ -162,6 +198,7 @@ function buildHtml({ payload, credentials, scenarioResults, runUrl, artifactUrl,
     }</p>
     ${credentialRows}
     ${scenarios}
+    ${scratchMode}
     <p><a href="${escapeHtml(artifactUrl)}">Open the uploaded artifacts</a></p>
     <p><a href="${escapeHtml(runUrl)}">Open the GitHub Actions run log</a></p>
     <p>

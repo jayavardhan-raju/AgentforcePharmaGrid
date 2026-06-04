@@ -8,7 +8,7 @@ nav_order: 2
 
 # Launch Live Demo
 
-Use this secure launch form to provision a 30-day Salesforce scratch org from your own Dev Hub. The Salesforce auth URL is sent directly to the short-lived broker over HTTPS, claimed once by GitHub Actions, and deleted after claim or TTL expiry.
+Use this secure launch form to provision a Salesforce scratch org from your own Dev Hub. Choose the duration that fits your demo window. The Salesforce auth URL is sent directly to the short-lived broker over HTTPS, claimed once by GitHub Actions, and deleted after claim or TTL expiry.
 
 <form
   id="live-demo-form"
@@ -43,6 +43,28 @@ Use this secure launch form to provision a 30-day Salesforce scratch org from yo
         required
       >
     </label>
+
+    <fieldset class="live-demo-radio-group">
+      <legend>Scratch Org Setup</legend>
+      <label>
+        <input name="scratchOrgMode" type="radio" value="create" checked>
+        <span>Create new scratch org</span>
+      </label>
+      <label>
+        <input name="scratchOrgMode" type="radio" value="reuse">
+        <span>Use existing active scratch org when available</span>
+      </label>
+    </fieldset>
+
+    <label>
+      <span>Scratch Org Duration</span>
+      <select name="scratchOrgDurationDays" required>
+        <option value="7">7 days</option>
+        <option value="14">14 days</option>
+        <option value="21">21 days</option>
+        <option value="30" selected>30 days</option>
+      </select>
+    </label>
   </div>
 
   <label class="live-demo-secret">
@@ -66,12 +88,14 @@ Use this secure launch form to provision a 30-day Salesforce scratch org from yo
 <section id="live-demo-result" class="live-demo-result" hidden>
   <h2>Request accepted</h2>
   <p>
-    GitHub Actions is provisioning a 30-day AgentforcePharmaGrid scratch org.
+    GitHub Actions is provisioning an AgentforcePharmaGrid scratch org.
     Watch your email for the login credentials, expiration date, demo GIF, and artifact link.
   </p>
   <dl>
     <dt>Request ID</dt>
     <dd id="live-demo-request-id"></dd>
+    <dt>Scratch org duration</dt>
+    <dd id="live-demo-duration"></dd>
     <dt>Auth URL claim expires</dt>
     <dd id="live-demo-expires-at"></dd>
   </dl>
@@ -82,7 +106,7 @@ Use this secure launch form to provision a 30-day Salesforce scratch org from yo
 1. The broker validates the Dev Hub auth URL and stores it with a short TTL.
 2. The broker triggers a `repository_dispatch` event in `jayavardhan-raju/AgentforcePharmaGrid`.
 3. GitHub Actions verifies your fork, claims the auth URL once, masks it, logs into your Dev Hub, and deletes the temp auth file.
-4. The workflow creates a 30-day Agentforce-ready scratch org, deploys the app, seeds the six demo scenarios, configures Prompt Builder/Grid setup, captures evidence, and sends a Mailtrap email.
+4. The workflow reuses an existing active scratch org when requested and usable; otherwise it creates an Agentforce-ready scratch org for the selected duration, deploys the app, seeds the six demo scenarios, configures Prompt Builder/Grid setup, captures evidence, and sends a Mailtrap email.
 
 The auth URL is never stored in GitHub Issues, workflow inputs, logs, artifacts, or email.
 

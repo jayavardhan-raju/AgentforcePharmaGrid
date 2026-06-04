@@ -83,13 +83,70 @@ test("accepts a valid auth URL and dispatches a live demo request", async () => 
 
   assert.equal(response.status, 202);
   assert.equal(body.ok, true);
+  assert.equal(body.scratch_org_mode, "create");
   assert.equal(body.scratch_org_duration_days, 30);
   assert.equal(kv.records.size, 1);
   assert.equal(dispatches.length, 1);
   assert.equal(dispatches[0].body.event_type, "live-demo-requested");
   assert.equal(dispatches[0].body.client_payload.email, "priya@example.com");
+  assert.equal(dispatches[0].body.client_payload.scratch_org_mode, "create");
+  assert.equal(dispatches[0].body.client_payload.scratch_org_duration_days, 30);
   assert.ok(dispatches[0].body.client_payload.claim_token);
   assert.equal(JSON.stringify(dispatches[0].body).includes(VALID_AUTH_URL), false);
+});
+
+test("dispatches requester-selected scratch org reuse mode", async () => {
+  const { handler, dispatches } = createTestBroker();
+
+  const response = await handler.fetch(
+    post("/launch", validLaunchBody({ scratchOrgMode: "reuse" })),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 202);
+  assert.equal(body.scratch_org_mode, "reuse");
+  assert.equal(dispatches[0].body.client_payload.scratch_org_mode, "reuse");
+});
+
+test("dispatches requester-selected scratch org duration", async () => {
+  const { handler, dispatches } = createTestBroker();
+
+  const response = await handler.fetch(
+    post("/launch", validLaunchBody({ scratchOrgDurationDays: 14 })),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 202);
+  assert.equal(body.scratch_org_duration_days, 14);
+  assert.equal(dispatches[0].body.client_payload.scratch_org_duration_days, 14);
+});
+
+test("rejects unsupported scratch org mode without dispatching", async () => {
+  const { handler, kv, dispatches } = createTestBroker();
+
+  const response = await handler.fetch(
+    post("/launch", validLaunchBody({ scratchOrgMode: "keep" })),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(body.fields, ["scratchOrgMode"]);
+  assert.equal(kv.records.size, 0);
+  assert.equal(dispatches.length, 0);
+});
+
+test("rejects unsupported scratch org duration without dispatching", async () => {
+  const { handler, kv, dispatches } = createTestBroker();
+
+  const response = await handler.fetch(
+    post("/launch", validLaunchBody({ scratchOrgDurationDays: 31 })),
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(body.fields, ["scratchOrgDurationDays"]);
+  assert.equal(kv.records.size, 0);
+  assert.equal(dispatches.length, 0);
 });
 
 test("rejects an invalid Salesforce auth URL without dispatching", async () => {
@@ -124,6 +181,8 @@ test("one-time claim returns the secret once and deletes it", async () => {
 
   assert.equal(claimResponse.status, 200);
   assert.equal(claimBody.salesforce_auth_url, VALID_AUTH_URL);
+  assert.equal(claimBody.scratch_org_mode, "create");
+  assert.equal(claimBody.scratch_org_duration_days, 30);
   assert.equal(kv.records.size, 0);
 
   const secondClaim = await handler.fetch(

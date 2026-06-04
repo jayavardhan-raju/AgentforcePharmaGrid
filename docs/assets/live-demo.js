@@ -8,6 +8,7 @@
   const status = document.getElementById("live-demo-status");
   const result = document.getElementById("live-demo-result");
   const requestId = document.getElementById("live-demo-request-id");
+  const duration = document.getElementById("live-demo-duration");
   const expiresAt = document.getElementById("live-demo-expires-at");
 
   showStatus("Ready to submit.");
@@ -39,6 +40,8 @@
           email: data.email.trim(),
           githubUsername: data.githubUsername.trim(),
           forkUrl: data.forkUrl.trim(),
+          scratchOrgMode: data.scratchOrgMode,
+          scratchOrgDurationDays: Number(data.scratchOrgDurationDays),
           salesforceAuthUrl: data.salesforceAuthUrl.trim(),
         }),
       });
@@ -53,6 +56,7 @@
 
       form.reset();
       requestId.textContent = body.request_id;
+      duration.textContent = `${body.scratch_org_duration_days} days`;
       expiresAt.textContent = new Date(body.expires_at).toLocaleString();
       result.hidden = false;
       showStatus("Launch accepted. Check your email for the demo org details.");
@@ -85,6 +89,15 @@
     const authUrl = (data.salesforceAuthUrl || "").trim();
     if (!/^force:\/\/[^@\s]+@(?:https:\/\/)?[A-Za-z0-9.-]+(?:\/[^\s]*)?$/.test(authUrl)) {
       return "Enter a valid Salesforce Dev Hub auth URL in force://...@instance format.";
+    }
+
+    const durationDays = Number(data.scratchOrgDurationDays);
+    if (![7, 14, 21, 30].includes(durationDays)) {
+      return "Choose a supported scratch org duration.";
+    }
+
+    if (!["create", "reuse"].includes(data.scratchOrgMode)) {
+      return "Choose whether to create a new scratch org or use an existing one.";
     }
 
     return "";

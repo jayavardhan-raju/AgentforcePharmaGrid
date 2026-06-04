@@ -25,7 +25,7 @@ const username = display.result?.username;
 const instanceUrl = display.result?.instanceUrl;
 const loginUrl = display.result?.loginUrl || instanceUrl;
 const orgId = display.result?.id;
-const expiresAt = expirationDate(values["duration-days"]);
+const expiresAt = process.env.SCRATCH_ORG_EXPIRATION_DATE || expirationDate(values["duration-days"]);
 
 if (!username || !password || !loginUrl) {
   throw new Error("Unable to resolve scratch org login credentials from Salesforce CLI output");

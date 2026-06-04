@@ -1,5 +1,8 @@
 const DEFAULT_TTL_SECONDS = 15 * 60;
-const SCRATCH_ORG_DURATION_DAYS = 30;
+const DEFAULT_SCRATCH_ORG_DURATION_DAYS = 30;
+const ALLOWED_SCRATCH_ORG_DURATION_DAYS = new Set([7, 14, 21, 30]);
+const DEFAULT_SCRATCH_ORG_MODE = "create";
+const ALLOWED_SCRATCH_ORG_MODES = new Set(["create", "reuse"]);
 const DEFAULT_OWNER = "jayavardhan-raju";
 const DEFAULT_REPO = "AgentforcePharmaGrid";
 
@@ -80,6 +83,8 @@ async function launch(request, env, runtime) {
       email: payload.email,
       githubUsername: payload.githubUsername,
       forkUrl: payload.forkUrl,
+      scratchOrgMode: payload.scratchOrgMode,
+      scratchOrgDurationDays: payload.scratchOrgDurationDays,
     },
     salesforceAuthUrl: payload.salesforceAuthUrl,
   };
@@ -95,8 +100,9 @@ async function launch(request, env, runtime) {
     email: payload.email,
     github_username: payload.githubUsername,
     fork_url: payload.forkUrl,
+    scratch_org_mode: payload.scratchOrgMode,
     expires_at: expiresAt,
-    scratch_org_duration_days: SCRATCH_ORG_DURATION_DAYS,
+    scratch_org_duration_days: payload.scratchOrgDurationDays,
   });
 
   if (!dispatchResult.ok) {
@@ -118,7 +124,8 @@ async function launch(request, env, runtime) {
       ok: true,
       request_id: requestId,
       expires_at: expiresAt,
-      scratch_org_duration_days: SCRATCH_ORG_DURATION_DAYS,
+      scratch_org_mode: payload.scratchOrgMode,
+      scratch_org_duration_days: payload.scratchOrgDurationDays,
     },
     202,
     env,
@@ -168,7 +175,9 @@ async function claim(request, env, runtime) {
       salesforce_auth_url: record.salesforceAuthUrl,
       requester: record.requester,
       expires_at: record.expiresAt,
-      scratch_org_duration_days: SCRATCH_ORG_DURATION_DAYS,
+      scratch_org_mode: record.requester?.scratchOrgMode || DEFAULT_SCRATCH_ORG_MODE,
+      scratch_org_duration_days:
+        record.requester?.scratchOrgDurationDays || DEFAULT_SCRATCH_ORG_DURATION_DAYS,
     },
     200,
     env,
@@ -182,6 +191,10 @@ function normalizeLaunchPayload(body) {
     email: String(body.email || "").trim().toLowerCase(),
     githubUsername: String(body.githubUsername || body.github_username || "").trim(),
     forkUrl: String(body.forkUrl || body.fork_url || "").trim(),
+    scratchOrgMode: normalizeScratchOrgMode(body.scratchOrgMode || body.scratch_org_mode),
+    scratchOrgDurationDays: normalizeScratchOrgDuration(
+      body.scratchOrgDurationDays || body.scratch_org_duration_days,
+    ),
     salesforceAuthUrl: String(
       body.salesforceAuthUrl || body.salesforce_auth_url || "",
     ).trim(),
@@ -207,11 +220,32 @@ function validateLaunchPayload(payload) {
     fields.push("forkUrl");
   }
 
+  if (!ALLOWED_SCRATCH_ORG_MODES.has(payload.scratchOrgMode)) {
+    fields.push("scratchOrgMode");
+  }
+
+  if (!ALLOWED_SCRATCH_ORG_DURATION_DAYS.has(payload.scratchOrgDurationDays)) {
+    fields.push("scratchOrgDurationDays");
+  }
+
   if (!isValidSalesforceAuthUrl(payload.salesforceAuthUrl)) {
     fields.push("salesforceAuthUrl");
   }
 
   return fields;
+}
+
+function normalizeScratchOrgMode(value) {
+  const mode = String(value || DEFAULT_SCRATCH_ORG_MODE).trim().toLowerCase();
+  return mode || DEFAULT_SCRATCH_ORG_MODE;
+}
+
+function normalizeScratchOrgDuration(value) {
+  if (value === undefined || value === null || value === "") {
+    return DEFAULT_SCRATCH_ORG_DURATION_DAYS;
+  }
+
+  return Number(value);
 }
 
 export function isValidSalesforceAuthUrl(value) {

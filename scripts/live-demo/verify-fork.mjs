@@ -48,7 +48,8 @@ if (artifactDir) {
     fork_url: payload.fork_url,
     verified_fork: fork.fullName,
     source_repo: SOURCE_REPO,
-    scratch_org_duration_days: 30,
+    scratch_org_mode: payload.scratch_org_mode || "create",
+    scratch_org_duration_days: Number(payload.scratch_org_duration_days || 30),
   });
 }
 

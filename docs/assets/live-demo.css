@@ -19,6 +19,7 @@
 }
 
 .live-demo-form input,
+.live-demo-form select,
 .live-demo-form textarea {
   width: 100%;
   box-sizing: border-box;
@@ -36,6 +37,30 @@
 
 .live-demo-secret {
   margin-top: 1rem;
+}
+
+.live-demo-radio-group {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.live-demo-radio-group legend {
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+}
+
+.live-demo-radio-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.live-demo-radio-group input {
+  width: auto;
 }
 
 .live-demo-actions {

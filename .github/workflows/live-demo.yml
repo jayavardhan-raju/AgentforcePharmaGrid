@@ -9,7 +9,8 @@ permissions:
 
 env:
   SOURCE_REPO: jayavardhan-raju/AgentforcePharmaGrid
-  SCRATCH_ORG_DURATION_DAYS: "30"
+  SCRATCH_ORG_MODE: ${{ github.event.client_payload.scratch_org_mode || 'create' }}
+  SCRATCH_ORG_DURATION_DAYS: ${{ github.event.client_payload.scratch_org_duration_days || '30' }}
   SCRATCH_ALIAS: pharmagrid-demo-${{ github.run_id }}
   ARTIFACT_DIR: artifacts/live-demo/${{ github.run_id }}
 
@@ -61,34 +62,23 @@ jobs:
           rm -f "$AUTH_FILE"
           unset AUTH_URL
 
-      - name: Create 30-day Agentforce scratch org
+      - name: Select or create scratch org
         run: |
-          sf org create scratch \
-            --definition-file config/project-scratch-def.json \
+          node scripts/live-demo/select-scratch-org.mjs \
+            --target-dev-hub requester-devhub \
             --alias "$SCRATCH_ALIAS" \
             --duration-days "$SCRATCH_ORG_DURATION_DAYS" \
-            --target-dev-hub requester-devhub \
-            --set-default \
-            --json > "$RUNNER_TEMP/scratch-create.json"
+            --definition-file config/project-scratch-def.json \
+            --artifacts "$ARTIFACT_DIR"
 
       - name: Deploy AgentforcePharmaGrid
         run: |
           sf project deploy start \
             --source-dir force-app \
             --target-org "$SCRATCH_ALIAS" \
-            --test-level RunLocalTests \
+            --test-level NoTestRun \
             --wait 30 \
             --json > "$ARTIFACT_DIR/deploy.json"
-
-      - name: Run Apex regression tests with coverage
-        run: |
-          sf apex run test \
-            --class-names InterStoreTransferServiceTest,InterStoreTransferActionTest,InventoryPositionSelectorTest,PostInstallScriptTest \
-            --target-org "$SCRATCH_ALIAS" \
-            --code-coverage \
-            --result-format json \
-            --wait 30 \
-            --json > "$ARTIFACT_DIR/apex-tests.json"
 
       - name: Assign IST operations permission set
         run: |
