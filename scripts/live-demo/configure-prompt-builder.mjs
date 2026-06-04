@@ -9,6 +9,12 @@ const PROMPT_API_NAME = "IST_Inventory_Recommendation";
 const PROMPT_NAME = "IST Inventory Recommendation";
 const PROMPT_METADATA_API_VERSION = "66.0";
 const PROMPT_METADATA_SOURCE_DIR = "metadata/prompt-builder/genAiPromptTemplates";
+const PROMPT_MODEL_CANDIDATES = [
+  process.env.PROMPT_BUILDER_MODEL,
+  "sfdc_ai__DefaultGPT4Omni",
+  "sfdc_ai__DefaultGPT4OmniMini",
+  "sfdc_ai__DefaultOpenAIGPT4OmniMini",
+].filter(Boolean);
 const PROMPT_BUILDER_HOME_PATHS = [
   "/lightning/setup/EinsteinPromptStudio/home",
   "/lightning/setup/EinsteinGPTPromptTemplates/home",
@@ -228,32 +234,58 @@ async function activateRetrievedPromptTemplateVersion(targetOrg) {
       );
     }
 
-    const activeXml = setOrInsertXmlValue(retrievedXml, "activeVersionIdentifier", versionIdentifier);
-    await writeFile(retrievedPath, activeXml, "utf8");
+    const activationAttempts = [];
+    let activationOutput = null;
+    let activatedModel = null;
 
-    const activationOutput = await sfJson([
-      "project",
-      "deploy",
-      "start",
-      "--source-dir",
-      dirname(retrievedPath),
-      "--target-org",
-      targetOrg,
-      "--api-version",
-      PROMPT_METADATA_API_VERSION,
-      "--wait",
-      "30",
-    ]);
+    for (const model of PROMPT_MODEL_CANDIDATES) {
+      const modelXml = setOrInsertTemplateVersionXmlValue(retrievedXml, "primaryModel", model);
+      const activationXml = setOrInsertXmlValue(modelXml, "activeVersionIdentifier", versionIdentifier);
+      await writeFile(retrievedPath, activationXml, "utf8");
+
+      try {
+        activationOutput = await sfJson([
+          "project",
+          "deploy",
+          "start",
+          "--source-dir",
+          dirname(retrievedPath),
+          "--target-org",
+          targetOrg,
+          "--api-version",
+          PROMPT_METADATA_API_VERSION,
+          "--wait",
+          "30",
+        ]);
+        activatedModel = model;
+        activationAttempts.push({ model, status: "success" });
+        break;
+      } catch (error) {
+        activationAttempts.push({
+          model,
+          status: "failed",
+          error: error.message,
+        });
+      }
+    }
+
+    if (!activationOutput) {
+      throw new Error(
+        `Could not activate ${PROMPT_API_NAME} with any configured model. Attempts: ${JSON.stringify(activationAttempts)}`,
+      );
+    }
 
     await writeJsonFile(`${values.artifacts}/prompt-builder-metadata-activation.json`, {
       status: "success",
       retrieveRoot,
       retrievedPath,
       versionIdentifier,
+      activatedModel,
+      activationAttempts,
       retrieveOutput,
       activationOutput,
     });
-    return { ok: true, versionIdentifier, activationOutput };
+    return { ok: true, versionIdentifier, activatedModel, activationOutput };
   } catch (error) {
     await writeJsonFile(`${values.artifacts}/prompt-builder-metadata-activation.json`, {
       status: "failed",
@@ -319,6 +351,20 @@ function setOrInsertXmlValue(xml, tagName, value) {
   return xml.replace(
     /(<GenAiPromptTemplate[^>]*>\s*)/,
     `$1    <${tagName}>${escapedValue}</${tagName}>\n`,
+  );
+}
+
+function setOrInsertTemplateVersionXmlValue(xml, tagName, value) {
+  const escapedValue = escapeXml(value);
+  const existing = new RegExp(`<${tagName}>[^<]*</${tagName}>`);
+
+  if (existing.test(xml)) {
+    return xml.replace(existing, `<${tagName}>${escapedValue}</${tagName}>`);
+  }
+
+  return xml.replace(
+    /(<templateVersions>\s*)/,
+    `$1        <${tagName}>${escapedValue}</${tagName}>\n`,
   );
 }
 

@@ -41,7 +41,7 @@ OUTPUT ONLY THE RECOMMENDATION TEXT.</content>
             <referenceName>Input:Inventory_Position__c</referenceName>
             <required>true</required>
         </inputs>
-        <primaryModel>sfdc_ai__DefaultOpenAIGPT4</primaryModel>
+        <primaryModel>sfdc_ai__DefaultGPT4Omni</primaryModel>
         <status>Published</status>
     </templateVersions>
     <type>einstein_gpt__flex</type>
