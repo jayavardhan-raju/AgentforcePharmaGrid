@@ -18,7 +18,8 @@ if (!values.artifacts) {
   throw new Error("Usage: node send-mailtrap-email.mjs --artifacts <dir> --credentials <runner-temp-file> --status <status>");
 }
 
-const token = process.env.MAILTRAP_TOKEN || process.env.MAILTRAP_API_TOKEN;
+const tokenSource = process.env.MAILTRAP_TOKEN ? "MAILTRAP_TOKEN" : "MAILTRAP_API_TOKEN";
+const token = normalizeMailtrapToken(process.env.MAILTRAP_TOKEN || process.env.MAILTRAP_API_TOKEN);
 if (!token) {
   console.warn("MAILTRAP_TOKEN is not configured; skipping email send");
   process.exit(0);
@@ -68,7 +69,7 @@ const attachments = await buildAttachments(values.artifacts);
 const response = await fetch("https://send.api.mailtrap.io/api/send", {
   method: "POST",
   headers: {
-    authorization: `Bearer ${token}`,
+    "api-token": token,
     "content-type": "application/json",
   },
   body: JSON.stringify({
@@ -93,7 +94,7 @@ if (!response.ok) {
   const body = await response.text();
   if (response.status === 401) {
     throw new Error(
-      `Mailtrap rejected MAILTRAP_TOKEN with HTTP 401. Replace the GitHub Actions secret MAILTRAP_TOKEN with a valid Mailtrap Send API token. Response: ${body}`,
+      `Mailtrap rejected ${tokenSource} with HTTP 401. Use a Mailtrap Email Sending API token from Sending Domains > Integration > API, make sure it has send permission for the MAILTRAP_FROM_EMAIL domain, and store only the raw token value without "Bearer ". Token diagnostics: ${mailtrapTokenDiagnostics(token)}. Response: ${body}`,
     );
   }
 
@@ -232,4 +233,16 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function normalizeMailtrapToken(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+}
+
+function mailtrapTokenDiagnostics(value) {
+  const token = String(value || "");
+  return `length=${token.length}, prefix=${token.slice(0, 4) || "empty"}, suffix=${token.slice(-4) || "empty"}`;
 }

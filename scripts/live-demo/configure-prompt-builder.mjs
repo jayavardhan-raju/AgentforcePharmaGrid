@@ -1,4 +1,8 @@
 import { parseArgs } from "node:util";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { ensureDir, getOrgOpenUrl, querySalesforce, sfJson, writeJsonFile } from "./lib.mjs";
 
@@ -65,7 +69,7 @@ if (before.records.length > 0 && isActive(before.records[0])) {
 
 const metadataDeploy = await deployPromptTemplateMetadata(values["target-org"]);
 if (metadataDeploy.ok) {
-  const afterMetadataDeploy = await waitForPrompt(values["target-org"], { active: true, timeoutMs: 60000 });
+  const afterMetadataDeploy = await waitForPrompt(values["target-org"], { timeoutMs: 60000 });
   if (afterMetadataDeploy.records.length > 0 && isActive(afterMetadataDeploy.records[0])) {
     await writeJsonFile(`${values.artifacts}/prompt-builder.json`, {
       status: "active",
@@ -74,6 +78,20 @@ if (metadataDeploy.ok) {
     });
     console.log(`${PROMPT_API_NAME} deployed and active from metadata`);
     process.exit(0);
+  }
+
+  const activation = await activateRetrievedPromptTemplateVersion(values["target-org"]);
+  if (activation.ok) {
+    const afterActivation = await waitForPrompt(values["target-org"], { active: true, timeoutMs: 60000 });
+    if (afterActivation.records.length > 0 && isActive(afterActivation.records[0])) {
+      await writeJsonFile(`${values.artifacts}/prompt-builder.json`, {
+        status: "active",
+        configured_by: "metadata_deploy_and_retrieve_activate",
+        prompt: afterActivation.records[0],
+      });
+      console.log(`${PROMPT_API_NAME} deployed and activated from retrieved metadata`);
+      process.exit(0);
+    }
   }
 }
 
@@ -179,6 +197,74 @@ async function deployPromptTemplateMetadata(targetOrg) {
   }
 }
 
+async function activateRetrievedPromptTemplateVersion(targetOrg) {
+  const retrieveRoot = await mkdtemp(join(tmpdir(), "pharmagrid-prompt-retrieve-"));
+
+  try {
+    const retrieveOutput = await sfJson([
+      "project",
+      "retrieve",
+      "start",
+      "--metadata",
+      `GenAiPromptTemplate:${PROMPT_API_NAME}`,
+      "--target-org",
+      targetOrg,
+      "--api-version",
+      PROMPT_METADATA_API_VERSION,
+      "--output-dir",
+      retrieveRoot,
+    ]);
+
+    const retrievedPath = await findFile(retrieveRoot, `${PROMPT_API_NAME}.genAiPromptTemplate-meta.xml`);
+    if (!retrievedPath) {
+      throw new Error(`Retrieve did not produce ${PROMPT_API_NAME}.genAiPromptTemplate-meta.xml under ${retrieveRoot}`);
+    }
+
+    const retrievedXml = await readFile(retrievedPath, "utf8");
+    const versionIdentifier = getXmlValue(retrievedXml, "versionIdentifier");
+    if (!versionIdentifier) {
+      throw new Error(
+        "Retrieved prompt template metadata did not include a generated versionIdentifier. The template likely was not created successfully.",
+      );
+    }
+
+    const activeXml = setOrInsertXmlValue(retrievedXml, "activeVersionIdentifier", versionIdentifier);
+    await writeFile(retrievedPath, activeXml, "utf8");
+
+    const activationOutput = await sfJson([
+      "project",
+      "deploy",
+      "start",
+      "--source-dir",
+      dirname(retrievedPath),
+      "--target-org",
+      targetOrg,
+      "--api-version",
+      PROMPT_METADATA_API_VERSION,
+      "--wait",
+      "30",
+    ]);
+
+    await writeJsonFile(`${values.artifacts}/prompt-builder-metadata-activation.json`, {
+      status: "success",
+      retrieveRoot,
+      retrievedPath,
+      versionIdentifier,
+      retrieveOutput,
+      activationOutput,
+    });
+    return { ok: true, versionIdentifier, activationOutput };
+  } catch (error) {
+    await writeJsonFile(`${values.artifacts}/prompt-builder-metadata-activation.json`, {
+      status: "failed",
+      retrieveRoot,
+      error: error.message,
+    });
+    console.warn(`Prompt template metadata activation failed, falling back to UI automation: ${error.message}`);
+    return { ok: false, error };
+  }
+}
+
 async function waitForPrompt(targetOrg, options = {}) {
   const timeoutMs = options.timeoutMs || 30000;
   const started = Date.now();
@@ -194,6 +280,53 @@ async function waitForPrompt(targetOrg, options = {}) {
   }
 
   return lastResult;
+}
+
+async function findFile(root, fileName) {
+  if (!existsSync(root)) {
+    return null;
+  }
+
+  const entries = await readdir(root, { withFileTypes: true });
+  for (const entry of entries) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await findFile(path, fileName);
+      if (nested) {
+        return nested;
+      }
+    } else if (entry.name === fileName) {
+      return path;
+    }
+  }
+
+  return null;
+}
+
+function getXmlValue(xml, tagName) {
+  const match = xml.match(new RegExp(`<${tagName}>([^<]+)</${tagName}>`));
+  return match?.[1] || "";
+}
+
+function setOrInsertXmlValue(xml, tagName, value) {
+  const escapedValue = escapeXml(value);
+  const existing = new RegExp(`<${tagName}>[^<]*</${tagName}>`);
+
+  if (existing.test(xml)) {
+    return xml.replace(existing, `<${tagName}>${escapedValue}</${tagName}>`);
+  }
+
+  return xml.replace(
+    /(<GenAiPromptTemplate[^>]*>\s*)/,
+    `$1    <${tagName}>${escapedValue}</${tagName}>\n`,
+  );
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 async function openPromptBuilderAndClickNew(page) {
