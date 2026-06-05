@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 
-import { ensureDir, getOrgOpenUrl, queryToolingApi, writeJsonFile } from "./lib.mjs";
+import { ensureDir, getOrgOpenUrl, listOrgMetadata, writeJsonFile } from "./lib.mjs";
 
 const PROMPT_API_NAME = "IST_Inventory_Recommendation";
 const promptTemplate = {
@@ -104,22 +104,26 @@ if (!active) {
 console.log(`${PROMPT_API_NAME} created and active through Prompt Builder UI`);
 
 async function findPrompt(targetOrg) {
+  // Prompt templates are not exposed as a SOQL-queryable object (no EntityDefinition,
+  // neither Data nor Tooling API). They are only visible through the Metadata API, so
+  // detect the template by listing GenAiPromptTemplate components.
   try {
-    const records = await queryToolingApi(
-      targetOrg,
-      `SELECT Id, DeveloperName, MasterLabel, Status, Type FROM GenAiPromptTemplate WHERE DeveloperName = '${PROMPT_API_NAME}' OR MasterLabel = '${promptTemplate.name}' ORDER BY LastModifiedDate DESC LIMIT 1`,
-    );
+    const components = await listOrgMetadata(targetOrg, "GenAiPromptTemplate");
+    const records = components.filter((component) => component.fullName === PROMPT_API_NAME);
     return { records };
   } catch (error) {
-    // Surface the failure: a broken verification query must not silently masquerade as
+    // Surface the failure: a broken verification must not silently masquerade as
     // "template missing" and push the run into the brittle create-via-UI fallback.
-    console.warn(`Prompt template verification query failed: ${error.message}`);
+    console.warn(`Prompt template verification failed: ${error.message}`);
     return { records: [], error: error.message };
   }
 }
 
 function isActive(record) {
-  return String(record.Status || "").toLowerCase() === "active";
+  // GenAiPromptTemplate exposes no queryable activation status. A template only
+  // surfaces in the org's metadata once it has been saved, so presence of the
+  // expected component is the strongest reliable signal that it is configured.
+  return Boolean(record && record.fullName === PROMPT_API_NAME);
 }
 
 async function createPromptBuilderTemplate(page, captures) {
