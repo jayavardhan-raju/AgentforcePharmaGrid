@@ -93,6 +93,19 @@ export async function querySalesforce(targetOrg, query) {
   return output.result?.records || [];
 }
 
+export async function queryToolingApi(targetOrg, query) {
+  const output = await sfJson([
+    "data",
+    "query",
+    "--target-org",
+    targetOrg,
+    "--query",
+    query,
+    "--use-tooling-api",
+  ]);
+  return output.result?.records || [];
+}
+
 export async function getOrgOpenUrl(targetOrg, path = "") {
   const args = ["org", "open", "--target-org", targetOrg, "--url-only"];
   if (path) {

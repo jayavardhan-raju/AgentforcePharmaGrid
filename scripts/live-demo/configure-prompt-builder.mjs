@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 
-import { ensureDir, getOrgOpenUrl, querySalesforce, writeJsonFile } from "./lib.mjs";
+import { ensureDir, getOrgOpenUrl, queryToolingApi, writeJsonFile } from "./lib.mjs";
 
 const PROMPT_API_NAME = "IST_Inventory_Recommendation";
 const promptTemplate = {
@@ -105,18 +105,21 @@ console.log(`${PROMPT_API_NAME} created and active through Prompt Builder UI`);
 
 async function findPrompt(targetOrg) {
   try {
-    const records = await querySalesforce(
+    const records = await queryToolingApi(
       targetOrg,
-      `SELECT Id, DeveloperName, MasterLabel, ActiveVersion FROM AiPrompt WHERE DeveloperName = '${PROMPT_API_NAME}' OR MasterLabel = '${promptTemplate.name}' ORDER BY CreatedDate DESC LIMIT 1`,
+      `SELECT Id, DeveloperName, MasterLabel, Status, Type FROM GenAiPromptTemplate WHERE DeveloperName = '${PROMPT_API_NAME}' OR MasterLabel = '${promptTemplate.name}' ORDER BY LastModifiedDate DESC LIMIT 1`,
     );
     return { records };
   } catch (error) {
+    // Surface the failure: a broken verification query must not silently masquerade as
+    // "template missing" and push the run into the brittle create-via-UI fallback.
+    console.warn(`Prompt template verification query failed: ${error.message}`);
     return { records: [], error: error.message };
   }
 }
 
 function isActive(record) {
-  return Number(record.ActiveVersion || 0) > 0;
+  return String(record.Status || "").toLowerCase() === "active";
 }
 
 async function createPromptBuilderTemplate(page, captures) {
