@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
+
+import nodemailer from "nodemailer";
 
 import { githubRunUrl, readDispatchPayload, readJsonFile } from "./lib.mjs";
 
@@ -18,12 +19,21 @@ if (!values.artifacts) {
   throw new Error("Usage: node send-mailtrap-email.mjs --artifacts <dir> --credentials <runner-temp-file> --status <status>");
 }
 
-const tokenSource = process.env.MAILTRAP_TOKEN ? "MAILTRAP_TOKEN" : "MAILTRAP_API_TOKEN";
-const token = normalizeMailtrapToken(process.env.MAILTRAP_TOKEN || process.env.MAILTRAP_API_TOKEN);
-if (!token) {
-  console.warn("MAILTRAP_TOKEN is not configured; skipping email send");
+// Send through Mailtrap SMTP with nodemailer (the mechanism proven to deliver),
+// authenticating with the inbox/sending-stream SMTP username + password. The
+// password also accepts the legacy MAILTRAP_TOKEN secret so existing setups keep
+// working. Live delivery uses live.smtp.mailtrap.io; override host/port for sandbox.
+const smtpUser = process.env.MAILTRAP_USER || "api";
+const smtpPass = String(process.env.MAILTRAP_PASS || process.env.MAILTRAP_TOKEN || process.env.MAILTRAP_API_TOKEN || "")
+  .trim()
+  .replace(/^Bearer\s+/i, "")
+  .trim();
+if (!smtpPass) {
+  console.warn("MAILTRAP_PASS is not configured; skipping email send");
   process.exit(0);
 }
+const smtpHost = process.env.MAILTRAP_HOST || "live.smtp.mailtrap.io";
+const smtpPort = Number(process.env.MAILTRAP_PORT || 587);
 
 const payload = await readDispatchPayload();
 const credentials = values.credentials && existsSync(values.credentials)
@@ -66,42 +76,38 @@ const html = buildHtml({
 });
 const attachments = await buildAttachments(values.artifacts);
 
-const response = await fetch("https://send.api.mailtrap.io/api/send", {
-  method: "POST",
-  headers: {
-    "api-token": token,
-    "content-type": "application/json",
-  },
-  body: JSON.stringify({
-    from: {
-      email: process.env.MAILTRAP_FROM_EMAIL || "demo@agentforcepharmagrid.example",
-      name: process.env.MAILTRAP_FROM_NAME || "AgentforcePharmaGrid Demo",
-    },
-    to: [
-      {
-        email: payload.email,
-        name: payload.name,
-      },
-    ],
+const fromEmail = process.env.MAILTRAP_FROM_EMAIL || "demo@agentforcepharmagrid.example";
+const fromName = process.env.MAILTRAP_FROM_NAME || "AgentforcePharmaGrid Demo";
+
+const transporter = nodemailer.createTransport({
+  host: smtpHost,
+  port: smtpPort,
+  secure: smtpPort === 465,
+  auth: { user: smtpUser, pass: smtpPass },
+});
+
+try {
+  await transporter.verify();
+  console.log(`Connected to Mailtrap SMTP ${smtpHost}:${smtpPort} as ${smtpUser}`);
+  const info = await transporter.sendMail({
+    from: { name: fromName, address: fromEmail },
+    to: { name: payload.name, address: payload.email },
     subject,
     text,
     html,
     attachments,
-  }),
-});
-
-if (!response.ok) {
-  const body = await response.text();
-  if (response.status === 401) {
-    throw new Error(
-      `Mailtrap rejected ${tokenSource} with HTTP 401. Use a Mailtrap Email Sending API token from Sending Domains > Integration > API, make sure it has send permission for the MAILTRAP_FROM_EMAIL domain, and store only the raw token value without "Bearer ". Token diagnostics: ${mailtrapTokenDiagnostics(token)}. Response: ${body}`,
-    );
+  });
+  console.log(`Mailtrap email sent to ${payload.email}: messageId=${info.messageId} response=${info.response}`);
+  if (info.rejected && info.rejected.length) {
+    console.warn(`Mailtrap rejected recipients: ${info.rejected.join(", ")}`);
   }
-
-  throw new Error(`Mailtrap send failed: HTTP ${response.status} ${body}`);
+} catch (error) {
+  throw new Error(
+    `Mailtrap SMTP send failed via ${smtpHost}:${smtpPort} (user=${smtpUser}, from=${fromEmail}): ${
+      error?.message || error
+    }${error?.response ? ` | server: ${error.response}` : ""}`,
+  );
 }
-
-console.log(`Mailtrap email sent to ${payload.email}`);
 
 function buildText({
   payload,
@@ -219,9 +225,8 @@ async function buildAttachments(artifactDir) {
   return [
     {
       filename: basename(gifPath),
-      content: (await readFile(gifPath)).toString("base64"),
-      type: "image/gif",
-      disposition: "attachment",
+      path: gifPath,
+      contentType: "image/gif",
     },
   ];
 }
@@ -233,16 +238,4 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-}
-
-function normalizeMailtrapToken(value) {
-  return String(value || "")
-    .trim()
-    .replace(/^Bearer\s+/i, "")
-    .trim();
-}
-
-function mailtrapTokenDiagnostics(value) {
-  const token = String(value || "");
-  return `length=${token.length}, prefix=${token.slice(0, 4) || "empty"}, suffix=${token.slice(-4) || "empty"}`;
 }

@@ -40,7 +40,7 @@ jobs:
       - name: Install Salesforce CLI and demo tooling
         run: |
           npm install --global @salesforce/cli
-          npm install --no-save --no-package-lock --omit=dev playwright
+          npm install --no-save --no-package-lock --omit=dev playwright nodemailer
           npx --no-install playwright install --with-deps chromium
 
       - name: Verify requester fork
@@ -129,7 +129,8 @@ jobs:
       - name: Send Mailtrap demo email
         if: always()
         env:
-          MAILTRAP_TOKEN: ${{ secrets.MAILTRAP_TOKEN }}
+          MAILTRAP_USER: ${{ secrets.MAILTRAP_USER }}
+          MAILTRAP_PASS: ${{ secrets.MAILTRAP_PASS }}
           MAILTRAP_FROM_EMAIL: ${{ vars.MAILTRAP_FROM_EMAIL }}
           MAILTRAP_FROM_NAME: ${{ vars.MAILTRAP_FROM_NAME }}
           ARTIFACT_URL: ${{ steps.upload-artifacts.outputs.artifact-url }}
