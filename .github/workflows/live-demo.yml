@@ -113,6 +113,10 @@ jobs:
         run: node scripts/live-demo/configure-agentforce-grid.mjs --target-org "$SCRATCH_ALIAS" --artifacts "$ARTIFACT_DIR"
 
       - name: Execute six Salesforce UI Transfer/Optimize scenarios
+        # These scenarios click the Transfer/Optimize button on the manually built
+        # Agentforce Grid; when the grid is absent the action is unavailable, so a
+        # failure here must not halt the run.
+        continue-on-error: true
         run: node scripts/live-demo/run-salesforce-ui-scenarios.mjs --target-org "$SCRATCH_ALIAS" --artifacts "$ARTIFACT_DIR"
 
       - name: Create consolidated demo GIF
