@@ -81,8 +81,16 @@ try {
   await browser.close();
 }
 
+// The Prompt Builder UI flow ends by capturing the activation final state
+// (PB-013), and activateOpenPromptTemplate confirms activation from the page
+// itself (the "Version N (Active)" state / Deactivate control). That on-screen
+// confirmation is authoritative, so it is the success signal. The Metadata API
+// lookup is kept only as supplementary evidence and never blocks success,
+// because a freshly created template lags in the org's metadata index.
 const after = await findPrompt(values["target-org"]);
-const active = after.records.length > 0 && isActive(after.records[0]);
+const active =
+  uiResult?.promptActivated === true ||
+  (after.records.length > 0 && isActive(after.records[0]));
 
 await writeJsonFile(`${values.artifacts}/prompt-builder.json`, {
   status: active ? "active" : "not_active",
