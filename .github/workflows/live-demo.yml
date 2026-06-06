@@ -107,6 +107,9 @@ jobs:
         run: node scripts/live-demo/configure-prompt-builder.mjs --target-org "$SCRATCH_ALIAS" --artifacts "$ARTIFACT_DIR"
 
       - name: Configure and verify real Agentforce Grid
+        # The Agentforce Grid is built manually in Lightning App Builder (not via
+        # this workflow), so a missing/undetected grid must not halt the run.
+        continue-on-error: true
         run: node scripts/live-demo/configure-agentforce-grid.mjs --target-org "$SCRATCH_ALIAS" --artifacts "$ARTIFACT_DIR"
 
       - name: Execute six Salesforce UI Transfer/Optimize scenarios
