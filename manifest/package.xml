@@ -15,12 +15,17 @@
         <!-- Inventory_Position__c -->
         <members>Inventory_Position__c.Expiry_Date__c</members>
         <members>Inventory_Position__c.Medication__c</members>
+        <members>Inventory_Position__c.Medication_Cold_Chain__c</members>
+        <members>Inventory_Position__c.Medication_DEA_Schedule__c</members>
+        <members>Inventory_Position__c.Medication_Name__c</members>
         <members>Inventory_Position__c.Quantity__c</members>
+        <members>Inventory_Position__c.Recommendation_Preview__c</members>
         <members>Inventory_Position__c.Recommendation__c</members>
         <members>Inventory_Position__c.Safety_Stock__c</members>
         <members>Inventory_Position__c.Status__c</members>
         <members>Inventory_Position__c.Status_Color__c</members>
         <members>Inventory_Position__c.Store__c</members>
+        <members>Inventory_Position__c.Store_Name__c</members>
         <!-- Medication__c -->
         <members>Medication__c.Cold_Chain_Required__c</members>
         <members>Medication__c.DEA_Schedule__c</members>
@@ -87,6 +92,7 @@
         <name>flexipage</name>
     </types>
     <types>
+        <members>Inventory_Position__c</members>
         <members>Transfer_Log__c</members>
         <name>CustomTab</name>
     </types>

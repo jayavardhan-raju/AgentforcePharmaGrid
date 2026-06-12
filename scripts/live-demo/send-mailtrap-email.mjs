@@ -48,6 +48,7 @@ const scratchSelection = existsSync(`${values.artifacts}/scratch-org-selection.j
 
 const runUrl = githubRunUrl();
 const artifactUrl = process.env.ARTIFACT_URL || runUrl;
+const gridUrl = buildGridUrl(credentials);
 const status = String(values.status || "unknown").toLowerCase();
 const success = status === "success" && credentials;
 const subject = success
@@ -137,6 +138,12 @@ function buildText({
       `Expiration: ${credentials.expires_at}`,
       "",
     );
+    if (gridUrl) {
+      lines.push(
+        `Inventory Transfer Ops grid (log in first, then open): ${gridUrl}`,
+        "",
+      );
+    }
   }
 
   if (scenarioResults) {
@@ -183,7 +190,12 @@ function buildHtml({
         <tr><th align="left">Login URL</th><td><a href="${escapeHtml(credentials.login_url)}">${escapeHtml(credentials.login_url)}</a></td></tr>
         <tr><th align="left">Username</th><td>${escapeHtml(credentials.username)}</td></tr>
         <tr><th align="left">Password</th><td><code>${escapeHtml(credentials.password)}</code></td></tr>
-        <tr><th align="left">Expiration</th><td>${escapeHtml(credentials.expires_at)}</td></tr>
+        <tr><th align="left">Expiration</th><td>${escapeHtml(credentials.expires_at)}</td></tr>${
+          gridUrl
+            ? `
+        <tr><th align="left">Inventory Transfer Ops grid</th><td><a href="${escapeHtml(gridUrl)}">Open the grid tab</a> (log in first)</td></tr>`
+            : ""
+        }
       </table>`
     : "";
 
@@ -214,6 +226,14 @@ function buildHtml({
     </p>
     <p>Scratch org duration is fixed at ${escapeHtml(durationDays)} days. The Salesforce Dev Hub auth URL is not included in this email, logs, or artifacts.</p>
   `;
+}
+
+function buildGridUrl(credentials) {
+  const base = credentials?.instance_url || credentials?.login_url;
+  if (!base) {
+    return "";
+  }
+  return `${String(base).replace(/\/+$/, "")}/lightning/o/Inventory_Position__c/list?filterName=Inventory_Transfer_Ops`;
 }
 
 async function buildAttachments(artifactDir) {

@@ -25,11 +25,13 @@ Defined in `objects/Inventory_Position__c/listViews/Inventory_Transfer_Ops.listV
 |---|---|
 | `fullName` | `Inventory_Transfer_Ops` |
 | `label` | `Inventory Transfer Ops` |
-| `filterScope` | `Mine` |
+| `filterScope` | `Everything` |
 
 **Columns** (in order):
 
-`NAME`, `OBJECT_ID`, `Store__c`, `Medication__c`, `Quantity__c`, `Safety_Stock__c`, `Expiry_Date__c`, `Status__c`, `Status_Color__c`, `Recommendation_Preview__c`, `Recommendation__c`, `CREATED_DATE`.
+`NAME`, `OBJECT_ID`, `Store__c`, `Medication__c`, `Quantity__c`, `Safety_Stock__c`, `Expiry_Date__c`, `Medication_DEA_Schedule__c`, `Medication_Cold_Chain__c`, `Status__c`, `Status_Color__c`, `Recommendation_Preview__c`, `Recommendation__c`, `CREATED_DATE`.
+
+`Medication_DEA_Schedule__c` and `Medication_Cold_Chain__c` are cross-object formula fields on `Inventory_Position__c` (list views cannot render lookup-target fields directly), so the Schedule II / cold-chain attributes that drive demo scenarios 1, 2, 4, and 5 are visible in the grid. The grid is reachable from the `Inventory_Position__c` custom tab (Inventory Positions).
 
 `Recommendation__c` is included for completeness, but the Grid surface that ops users interact with renders `Recommendation_Preview__c` because Long Text Area is not a supported Grid column type.
 

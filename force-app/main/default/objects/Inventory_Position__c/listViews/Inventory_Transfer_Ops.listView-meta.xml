@@ -8,11 +8,13 @@
     <columns>Quantity__c</columns>
     <columns>Safety_Stock__c</columns>
     <columns>Expiry_Date__c</columns>
+    <columns>Medication_DEA_Schedule__c</columns>
+    <columns>Medication_Cold_Chain__c</columns>
     <columns>Status__c</columns>
     <columns>Status_Color__c</columns>
     <columns>Recommendation_Preview__c</columns>
     <columns>Recommendation__c</columns>
     <columns>CREATED_DATE</columns>
-    <filterScope>Mine</filterScope>
+    <filterScope>Everything</filterScope>
     <label>Inventory Transfer Ops</label>
 </ListView>
