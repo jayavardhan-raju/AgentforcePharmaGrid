@@ -45,10 +45,17 @@ const scenarioResults = existsSync(`${values.artifacts}/scenario-results.json`)
 const scratchSelection = existsSync(`${values.artifacts}/scratch-org-selection.json`)
   ? await readJsonFile(`${values.artifacts}/scratch-org-selection.json`)
   : null;
+const gridStudio = existsSync(`${values.artifacts}/grid-studio.json`)
+  ? await readJsonFile(`${values.artifacts}/grid-studio.json`)
+  : null;
 
 const runUrl = githubRunUrl();
 const artifactUrl = process.env.ARTIFACT_URL || runUrl;
-const gridUrl = buildGridUrl(credentials);
+// Prefer the Grid Studio grid created during this run (URL is instance-specific
+// and captured at creation time); fall back to the Inventory Transfer Ops list
+// view on the scratch org instance.
+const gridUrl =
+  (gridStudio?.status === "created" && gridStudio.grid_url) || buildGridUrl(credentials);
 const status = String(values.status || "unknown").toLowerCase();
 const success = status === "success" && credentials;
 const subject = success

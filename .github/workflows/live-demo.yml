@@ -106,6 +106,18 @@ jobs:
       - name: Configure Prompt Builder template
         run: node scripts/live-demo/configure-prompt-builder.mjs --target-org "$SCRATCH_ALIAS" --artifacts "$ARTIFACT_DIR"
 
+      - name: Create Inventory Transfer Ops grid in Grid Studio
+        # Builds the grid in /AgentforceGrid/gridStudio.app from the exported
+        # CSV and records the per-org grid URL for the email. Best-effort: on
+        # failure the email falls back to the Inventory Transfer Ops list view.
+        continue-on-error: true
+        run: |
+          node scripts/live-demo/create-grid-studio-grid.mjs \
+            --target-org "$SCRATCH_ALIAS" \
+            --artifacts "$ARTIFACT_DIR" \
+            --csv scripts/live-demo/data/inventory-transfer-ops-grid.csv \
+            --grid-name "Inventory Transfer Ops"
+
       - name: Configure and verify real Agentforce Grid
         # The Agentforce Grid is built manually in Lightning App Builder (not via
         # this workflow), so a missing/undetected grid must not halt the run.
