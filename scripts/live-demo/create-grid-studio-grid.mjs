@@ -5,17 +5,19 @@ import { parseArgs } from "node:util";
 import { ensureDir, getOrgOpenUrl, writeJsonFile } from "./lib.mjs";
 
 /**
- * Creates an Agentforce Grid named "Inventory Transfer Ops" in Grid Studio
- * (/AgentforceGrid/gridStudio.app) and uploads the exported CSV as its data.
+ * Creates the "Inventory Transfer Ops" Agentforce Grid in Grid Studio
+ * (/AgentforceGrid/gridStudio.app) by uploading the exported CSV.
+ *
+ * Observed Grid Studio UI (from run evidence): the studio opens straight onto
+ * an empty grid with a top bar containing "Auto Update", "Advanced Filter",
+ * and a "..." (three dots / kebab) menu at the top right. The CSV import lives
+ * behind that kebab menu as an "Upload CSV" item. There is no separate
+ * "New Grid" button — the grid is created from the uploaded CSV.
  *
  * The Grid Studio URL is always derived from the freshly created scratch org
  * (via `sf org open --url-only`), never hard-coded, because the instance
  * domain differs on every run. The resulting grid URL is written to
  * <artifacts>/grid-studio.json so the Mailtrap email can link to it.
- *
- * Selector strategy is best-effort with screenshot evidence at each step;
- * on any failure the script records the evidence and throws rather than
- * pretending the grid exists.
  */
 
 const { values } = parseArgs({
@@ -56,61 +58,91 @@ try {
   await page.waitForTimeout(5000);
   await shot("GRIDSTUDIO-001-studio-home");
 
-  // Step 1: open the new-grid flow.
+  // Arm the native file chooser listener BEFORE any clicks: depending on the
+  // org, "Upload CSV" may be a direct button (step 1's first locator) or a
+  // kebab menu item (step 2), and the chooser must not be missed either way.
+  const fileChooserPromise = page.waitForEvent("filechooser", { timeout: 45000 }).catch(() => null);
+
+  // Step 1: open the top-right "..." (kebab) menu. Ordered most-specific to
+  // most-generic; the final fallback is the last button in the top bar, which
+  // is where the kebab sits in the observed layout.
   await clickFirst(
     [
-      page.getByRole("button", { name: /new grid/i }),
-      page.getByRole("button", { name: /create grid/i }),
-      page.getByRole("button", { name: /^new$/i }),
-      page.getByRole("link", { name: /new grid/i }),
-      page.getByText(/new grid/i).first(),
+      page.getByRole("button", { name: /upload csv/i }),
+      page.getByRole("button", { name: /more (options|actions)/i }),
+      page.getByRole("button", { name: /^(menu|options|actions|show more)$/i }),
+      page.locator('button[aria-haspopup="true"]:visible').last(),
+      page.locator("header button:visible, [class*='header'] button:visible, [class*='toolbar'] button:visible").last(),
+      page.locator("button:visible").last(),
     ],
-    "open the New Grid flow",
-  );
-  await page.waitForTimeout(3000);
-  await shot("GRIDSTUDIO-002-new-grid-dialog");
-
-  // Step 2: name the grid when a name input is offered up front.
-  await fillGridName();
-
-  // Step 3: upload the CSV. Prefer an explicit CSV/import affordance; fall
-  // back to any file input the dialog exposes.
-  await clickFirst(
-    [
-      page.getByRole("button", { name: /upload csv|import csv|from csv/i }),
-      page.getByRole("button", { name: /upload|import/i }),
-      page.getByText(/upload csv|import csv|from csv/i).first(),
-    ],
-    "open the CSV upload option",
-    { optional: true },
+    "open the top-right kebab (...) menu",
   );
   await page.waitForTimeout(2000);
+  await shot("GRIDSTUDIO-002-kebab-menu");
 
-  const fileInput = page.locator('input[type="file"]').first();
-  if (!(await fileInput.count())) {
-    throw new Error("Grid Studio did not expose a file input for CSV upload");
+  // Step 2: choose "Upload CSV" from the opened menu. Optional because the
+  // kebab itself may have been a direct Upload CSV control on some layouts.
+  await clickFirst(
+    [
+      page.getByRole("menuitem", { name: /upload csv/i }),
+      page.getByRole("option", { name: /upload csv/i }),
+      page.getByText(/upload csv/i).first(),
+      page.getByText(/import csv|from csv/i).first(),
+    ],
+    'choose "Upload CSV" from the menu',
+    { optional: true },
+  );
+
+  // Step 3: hand the CSV to whichever upload mechanism appeared. Prefer a
+  // native chooser that actually fired from our clicks (give it 5s) over a
+  // DOM file input, which could be an unrelated hidden element.
+  const fileChooser = await Promise.race([
+    fileChooserPromise,
+    new Promise((resolve) => setTimeout(() => resolve(null), 5000)),
+  ]);
+  if (fileChooser) {
+    await fileChooser.setFiles(csvPath);
+    evidence.steps.push({ step: "upload csv", ok: true, via: "filechooser", file: values.csv });
+  } else {
+    const fileInput = page.locator('input[type="file"]').first();
+    await fileInput.waitFor({ state: "attached", timeout: 20000 }).catch(() => {});
+    if (!(await fileInput.count())) {
+      throw new Error(
+        'Could not reach the CSV upload: neither a native file chooser nor an input[type="file"] appeared after opening the kebab menu',
+      );
+    }
+    await fileInput.setInputFiles(csvPath);
+    evidence.steps.push({ step: "upload csv", ok: true, via: "file input", file: values.csv });
   }
-  await fileInput.setInputFiles(csvPath);
-  evidence.steps.push({ step: "upload csv", ok: true, file: values.csv });
+
+  await page.waitForLoadState("networkidle", { timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(8000);
   await shot("GRIDSTUDIO-003-csv-uploaded");
 
-  // Step 4: the name field sometimes appears only after the data is loaded.
-  await fillGridName();
-
-  // Step 5: confirm/save.
+  // Step 4: confirm grid creation if the studio asks (optional — the upload
+  // may populate the grid directly).
   await clickFirst(
     [
-      page.getByRole("button", { name: /^save$/i }),
-      page.getByRole("button", { name: /^create$/i }),
-      page.getByRole("button", { name: /done|finish|next/i }),
+      page.getByRole("button", { name: /create grid/i }),
+      page.getByRole("button", { name: /^(create|save|import|done|confirm|finish)$/i }),
     ],
-    "save the grid",
+    "confirm grid creation",
     { optional: true },
   );
   await page.waitForLoadState("networkidle", { timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(5000);
+
+  // Step 5: name the grid when a name input is offered.
+  await fillGridName();
   await shot("GRIDSTUDIO-004-grid-created");
+
+  // Sanity check: the grid should now actually contain rows from the CSV.
+  const populated = await gridLooksPopulated();
+  if (!populated.ok) {
+    throw new Error(
+      `CSV upload completed but the grid does not show the expected data (${populated.reason}); refusing to report success`,
+    );
+  }
 
   const gridUrl = sanitizeUrl(page.url(), studioUrl);
   await writeJsonFile(`${values.artifacts}/grid-studio.json`, {
@@ -162,7 +194,20 @@ async function fillGridName() {
     evidence.steps.push({ step: "name the grid", ok: true });
     return true;
   }
+  evidence.steps.push({ step: "name the grid", ok: false, note: "no name input offered; skipped" });
   return false;
+}
+
+async function gridLooksPopulated() {
+  const bodyText = await page.locator("body").innerText({ timeout: 30000 }).catch(() => "");
+  // Markers that exist in the uploaded CSV and would only render if rows loaded.
+  const markers = ["Mounjaro 5mg", "CVS Downtown SF", "INV-"];
+  const found = markers.filter((m) => bodyText.includes(m));
+  evidence.steps.push({ step: "verify grid populated", markers_found: found });
+  if (found.length === 0) {
+    return { ok: false, reason: "none of the CSV row markers are visible on the page" };
+  }
+  return { ok: true };
 }
 
 function sanitizeUrl(url, fallback) {
