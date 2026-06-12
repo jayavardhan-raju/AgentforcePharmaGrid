@@ -42,19 +42,14 @@ Use this secure launch form to provision a Salesforce scratch org from your own 
         placeholder="https://github.com/your-user/AgentforcePharmaGrid"
         required
       >
+      <span class="live-demo-hint">
+        The URL of <strong>your own fork</strong> of this repository. If you
+        haven't forked it yet, open
+        <a href="https://github.com/jayavardhan-raju/AgentforcePharmaGrid/fork" target="_blank" rel="noopener">this fork link</a>,
+        click <strong>Create fork</strong>, then copy your new fork's address
+        (<code>https://github.com/&lt;your-username&gt;/AgentforcePharmaGrid</code>).
+      </span>
     </label>
-
-    <fieldset class="live-demo-radio-group">
-      <legend>Scratch Org Setup</legend>
-      <label>
-        <input name="scratchOrgMode" type="radio" value="create" checked>
-        <span>Create new scratch org</span>
-      </label>
-      <label>
-        <input name="scratchOrgMode" type="radio" value="reuse">
-        <span>Use existing active scratch org when available</span>
-      </label>
-    </fieldset>
 
     <label>
       <span>Scratch Org Duration</span>
@@ -78,6 +73,25 @@ Use this secure launch form to provision a Salesforce scratch org from your own 
       required
     ></textarea>
   </label>
+
+  <p class="live-demo-hint">
+    Your Dev Hub's Salesforce CLI auth URL (it starts with <code>force://</code>).
+    It lets the automation create the scratch org on your behalf. Generate it with
+    the Salesforce CLI
+    (<a href="https://developer.salesforce.com/tools/salesforcecli" target="_blank" rel="noopener">install it here</a>):
+  </p>
+
+<pre class="live-demo-cli"><code># 1. Log in to your Dev Hub (opens a browser)
+sf org login web --alias DevHub
+# 2. Print its details; copy the sfdxAuthUrl value
+sf org display --target-org DevHub --verbose --json</code></pre>
+
+  <p class="live-demo-hint">
+    Copy the value of <code>sfdxAuthUrl</code> from the JSON output and paste it
+    above. It contains a refresh token, so treat it like a password — it is sent
+    only to the short-lived broker over HTTPS and deleted right after the scratch
+    org is created.
+  </p>
 
   <div class="live-demo-actions">
     <button type="submit" id="live-demo-submit">Launch 30-Day Demo</button>
@@ -106,7 +120,7 @@ Use this secure launch form to provision a Salesforce scratch org from your own 
 1. The broker validates the Dev Hub auth URL and stores it with a short TTL.
 2. The broker triggers a `repository_dispatch` event in `jayavardhan-raju/AgentforcePharmaGrid`.
 3. GitHub Actions verifies your fork, claims the auth URL once, masks it, logs into your Dev Hub, and deletes the temp auth file.
-4. The workflow reuses an existing active scratch org when requested and usable; otherwise it creates an Agentforce-ready scratch org for the selected duration, deploys the app, seeds the six demo scenarios, configures Prompt Builder/Grid setup, captures evidence, and sends a Mailtrap email.
+4. The workflow creates an Agentforce-ready scratch org for the selected duration, deploys the app with local Apex tests, seeds the six demo scenarios, configures Prompt Builder/Grid setup, captures evidence, and sends a Mailtrap email.
 
 The auth URL is never stored in GitHub Issues, workflow inputs, logs, artifacts, or email.
 

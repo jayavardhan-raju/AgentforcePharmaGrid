@@ -40,7 +40,6 @@
           email: data.email.trim(),
           githubUsername: data.githubUsername.trim(),
           forkUrl: data.forkUrl.trim(),
-          scratchOrgMode: data.scratchOrgMode,
           scratchOrgDurationDays: Number(data.scratchOrgDurationDays),
           salesforceAuthUrl: data.salesforceAuthUrl.trim(),
         }),
@@ -94,10 +93,6 @@
     const durationDays = Number(data.scratchOrgDurationDays);
     if (![7, 14, 21, 30].includes(durationDays)) {
       return "Choose a supported scratch org duration.";
-    }
-
-    if (!["create", "reuse"].includes(data.scratchOrgMode)) {
-      return "Choose whether to create a new scratch org or use an existing one.";
     }
 
     return "";
