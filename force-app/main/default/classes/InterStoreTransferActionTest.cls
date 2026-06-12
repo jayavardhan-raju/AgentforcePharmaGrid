@@ -54,11 +54,12 @@ private class InterStoreTransferActionTest {
         input.inventoryPositionId = target.Id;
         input.confirm = false;
 
+        List<InterStoreTransferAction.ActionOutput> outputs;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<InterStoreTransferAction.ActionOutput> outputs =
+            outputs =
                 InterStoreTransferAction.execute(new List<InterStoreTransferAction.ActionInput>{ input });
             Test.stopTest();
         }
@@ -98,11 +99,12 @@ private class InterStoreTransferActionTest {
         input.inventoryPositionId = target.Id;
         input.confirm = true;
 
+        List<InterStoreTransferAction.ActionOutput> outputs;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<InterStoreTransferAction.ActionOutput> outputs =
+            outputs =
                 InterStoreTransferAction.execute(new List<InterStoreTransferAction.ActionInput>{ input });
             Test.stopTest();
         }
@@ -139,11 +141,12 @@ private class InterStoreTransferActionTest {
         input.inventoryPositionId = target.Id;
         input.confirm = null;  // Explicitly set to null
 
+        List<InterStoreTransferAction.ActionOutput> outputs;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<InterStoreTransferAction.ActionOutput> outputs =
+            outputs =
                 InterStoreTransferAction.execute(new List<InterStoreTransferAction.ActionInput>{ input });
             Test.stopTest();
         }
@@ -177,11 +180,12 @@ private class InterStoreTransferActionTest {
         input.inventoryPositionId = target.Id;
         input.confirm = false;
 
+        List<InterStoreTransferAction.ActionOutput> outputs;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<InterStoreTransferAction.ActionOutput> outputs =
+            outputs =
                 InterStoreTransferAction.execute(new List<InterStoreTransferAction.ActionInput>{ input });
             Test.stopTest();
         }
@@ -224,11 +228,12 @@ private class InterStoreTransferActionTest {
         input2.inventoryPositionId = target2.Id;
         input2.confirm = false;
 
+        List<InterStoreTransferAction.ActionOutput> outputs;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<InterStoreTransferAction.ActionOutput> outputs =
+            outputs =
                 InterStoreTransferAction.execute(new List<InterStoreTransferAction.ActionInput>{ input1, input2 });
             Test.stopTest();
         }
@@ -253,11 +258,12 @@ private class InterStoreTransferActionTest {
         input.inventoryPositionId = fakeId;
         input.confirm = false;
 
+        List<InterStoreTransferAction.ActionOutput> outputs;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<InterStoreTransferAction.ActionOutput> outputs =
+            outputs =
                 InterStoreTransferAction.execute(new List<InterStoreTransferAction.ActionInput>{ input });
             Test.stopTest();
         }
@@ -288,11 +294,12 @@ private class InterStoreTransferActionTest {
         input.inventoryPositionId = target.Id;
         input.confirm = false;
 
+        List<InterStoreTransferAction.ActionOutput> outputs;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<InterStoreTransferAction.ActionOutput> outputs =
+            outputs =
                 InterStoreTransferAction.execute(new List<InterStoreTransferAction.ActionInput>{ input });
             Test.stopTest();
         }

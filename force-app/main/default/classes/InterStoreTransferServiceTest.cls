@@ -73,11 +73,12 @@ private class InterStoreTransferServiceTest {
             sourceStore.Id, scheduleIIMed.Id, 100, 20, 150
         );
 
+        InterStoreTransferService.TransferResult result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            InterStoreTransferService.TransferResult result =
+            result =
                 InterStoreTransferService.evaluate(target.Id, false);
             Test.stopTest();
         }
@@ -116,11 +117,12 @@ private class InterStoreTransferServiceTest {
             sourceStore.Id, med.Id, 200, 50, 120
         );
 
+        InterStoreTransferService.TransferResult result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            InterStoreTransferService.TransferResult result =
+            result =
                 InterStoreTransferService.evaluate(target.Id, false);
             Test.stopTest();
         }
@@ -165,11 +167,12 @@ private class InterStoreTransferServiceTest {
         Decimal initialSourceQty = source.Quantity__c;
         Decimal initialTargetQty = target.Quantity__c;
 
+        InterStoreTransferService.TransferResult result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            InterStoreTransferService.TransferResult result =
+            result =
                 InterStoreTransferService.evaluate(target.Id, true);
             Test.stopTest();
         }
@@ -232,11 +235,12 @@ private class InterStoreTransferServiceTest {
             noColdChainStore.Id, coldChainMed.Id, 100, 20, 120
         );
 
+        InterStoreTransferService.TransferResult result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            InterStoreTransferService.TransferResult result =
+            result =
                 InterStoreTransferService.evaluate(target.Id, false);
             Test.stopTest();
         }
@@ -266,11 +270,12 @@ private class InterStoreTransferServiceTest {
             noDEAStore.Id, med.Id, 150, 30, 180
         );
 
+        InterStoreTransferService.TransferResult result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            InterStoreTransferService.TransferResult result =
+            result =
                 InterStoreTransferService.evaluate(target.Id, false);
             Test.stopTest();
         }
@@ -299,11 +304,12 @@ private class InterStoreTransferServiceTest {
             sourceStore.Id, med.Id, 100, 20, 15  // Expires in 15 days
         );
 
+        InterStoreTransferService.TransferResult result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            InterStoreTransferService.TransferResult result =
+            result =
                 InterStoreTransferService.evaluate(target.Id, false);
             Test.stopTest();
         }
@@ -335,11 +341,12 @@ private class InterStoreTransferServiceTest {
             sourceStore.Id, med.Id, 150, 50, 120
         );
 
+        InterStoreTransferService.TransferResult result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            InterStoreTransferService.TransferResult result =
+            result =
                 InterStoreTransferService.evaluate(target.Id, false);
             Test.stopTest();
         }
@@ -357,11 +364,12 @@ private class InterStoreTransferServiceTest {
         // Use fake ID that doesn't exist
         Id fakeId = '001000000000000AAA';
 
+        InterStoreTransferService.TransferResult result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            InterStoreTransferService.TransferResult result =
+            result =
                 InterStoreTransferService.evaluate(fakeId, false);
             Test.stopTest();
         }
@@ -398,11 +406,12 @@ private class InterStoreTransferServiceTest {
             bestSource.Id, med.Id, 300, 50, 130  // Highest quantity
         );
 
+        InterStoreTransferService.TransferResult result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            InterStoreTransferService.TransferResult result =
+            result =
                 InterStoreTransferService.evaluate(target.Id, false);
             Test.stopTest();
         }
@@ -431,11 +440,12 @@ private class InterStoreTransferServiceTest {
             sourceStore.Id, med.Id, 200, 50, 120
         );
 
+        InterStoreTransferService.TransferResult result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            InterStoreTransferService.TransferResult result =
+            result =
                 InterStoreTransferService.evaluate(target.Id, false);
             Test.stopTest();
         }

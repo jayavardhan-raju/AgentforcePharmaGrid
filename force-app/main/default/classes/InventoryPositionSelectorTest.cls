@@ -48,11 +48,12 @@ private class InventoryPositionSelectorTest {
             store.Id, med.Id, 100, 50, 90
         );
 
+        Inventory_Position__c result;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            Inventory_Position__c result = InventoryPositionSelector.getById(inv.Id);
+            result = InventoryPositionSelector.getById(inv.Id);
             Test.stopTest();
         }
 
@@ -140,11 +141,12 @@ private class InventoryPositionSelectorTest {
             store3.Id, med.Id, 100, 50, 85  // 50 surplus
         );
 
+        List<Inventory_Position__c> results;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+            results = InventoryPositionSelector.findSurplusSources(
                 med.Id,
                 store1.Id,  // Exclude store1
                 1
@@ -174,11 +176,12 @@ private class InventoryPositionSelectorTest {
             store1.Id, med.Id, 100, 50, 90
         );
 
+        List<Inventory_Position__c> results;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+            results = InventoryPositionSelector.findSurplusSources(
                 med.Id,
                 store1.Id,  // Exclude the only store
                 1
@@ -206,11 +209,12 @@ private class InventoryPositionSelectorTest {
             inactiveStore.Id, med.Id, 500, 50, 90
         );
 
+        List<Inventory_Position__c> results;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+            results = InventoryPositionSelector.findSurplusSources(
                 med.Id,
                 activeStore.Id,  // Exclude active store
                 1
@@ -238,11 +242,12 @@ private class InventoryPositionSelectorTest {
             store2.Id, med.Id, 10, 5, 90  // Only 5 surplus
         );
 
+        List<Inventory_Position__c> results;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+            results = InventoryPositionSelector.findSurplusSources(
                 med.Id,
                 store1.Id,
                 50  // Require minimum 50
@@ -270,11 +275,12 @@ private class InventoryPositionSelectorTest {
             store2.Id, med.Id, 100, 50, 90
         );
 
+        List<Inventory_Position__c> results;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+            results = InventoryPositionSelector.findSurplusSources(
                 med.Id,
                 store1.Id,
                 null  // Null should default to 1
@@ -302,11 +308,12 @@ private class InventoryPositionSelectorTest {
             store2.Id, med.Id, 200, 50, 90
         );
 
+        List<Inventory_Position__c> results;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
-            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+            results = InventoryPositionSelector.findSurplusSources(
                 med.Id,
                 store1.Id,
                 1
@@ -344,13 +351,15 @@ private class InventoryPositionSelectorTest {
             store.Id, med.Id, 100, 50, 90
         );
 
+        Inventory_Position__c result1;
+        List<Inventory_Position__c> result2;
         // Run as a non-admin user with the IST_Ops_User permission set
         User opsUser = ISTTestDataFactory.getOpsUser();
         System.runAs(opsUser) {
             Test.startTest();
             // Both methods should execute without error with security enforced
-            Inventory_Position__c result1 = InventoryPositionSelector.getById(inv.Id);
-            List<Inventory_Position__c> result2 = InventoryPositionSelector.findSurplusSources(
+            result1 = InventoryPositionSelector.getById(inv.Id);
+            result2 = InventoryPositionSelector.findSurplusSources(
                 med.Id, store.Id, 1
             );
             Test.stopTest();
