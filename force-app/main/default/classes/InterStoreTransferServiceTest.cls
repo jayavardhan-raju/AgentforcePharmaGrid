@@ -19,6 +19,9 @@ private class InterStoreTransferServiceTest {
 
     @TestSetup
     static void setupTestData() {
+        // Create a non-admin user with the IST_Ops_User permission set assigned
+        ISTTestDataFactory.createOpsUser();
+
         // Create stores with various capabilities
         Pharmacy_Store__c store1 = ISTTestDataFactory.createStore(
             'Store A - Target', true, 'DEA-001', true
@@ -70,10 +73,14 @@ private class InterStoreTransferServiceTest {
             sourceStore.Id, scheduleIIMed.Id, 100, 20, 150
         );
 
-        Test.startTest();
-        InterStoreTransferService.TransferResult result =
-            InterStoreTransferService.evaluate(target.Id, false);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            InterStoreTransferService.TransferResult result =
+                InterStoreTransferService.evaluate(target.Id, false);
+            Test.stopTest();
+        }
 
         // Assertions
         System.assertEquals(false, result.success, 'Schedule II should fail');
@@ -109,10 +116,14 @@ private class InterStoreTransferServiceTest {
             sourceStore.Id, med.Id, 200, 50, 120
         );
 
-        Test.startTest();
-        InterStoreTransferService.TransferResult result =
-            InterStoreTransferService.evaluate(target.Id, false);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            InterStoreTransferService.TransferResult result =
+                InterStoreTransferService.evaluate(target.Id, false);
+            Test.stopTest();
+        }
 
         // Assertions
         System.assertEquals(true, result.success, 'Dry-run should succeed');
@@ -154,10 +165,14 @@ private class InterStoreTransferServiceTest {
         Decimal initialSourceQty = source.Quantity__c;
         Decimal initialTargetQty = target.Quantity__c;
 
-        Test.startTest();
-        InterStoreTransferService.TransferResult result =
-            InterStoreTransferService.evaluate(target.Id, true);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            InterStoreTransferService.TransferResult result =
+                InterStoreTransferService.evaluate(target.Id, true);
+            Test.stopTest();
+        }
 
         // Assertions
         System.assertEquals(true, result.success, 'Execution should succeed');
@@ -217,10 +232,14 @@ private class InterStoreTransferServiceTest {
             noColdChainStore.Id, coldChainMed.Id, 100, 20, 120
         );
 
-        Test.startTest();
-        InterStoreTransferService.TransferResult result =
-            InterStoreTransferService.evaluate(target.Id, false);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            InterStoreTransferService.TransferResult result =
+                InterStoreTransferService.evaluate(target.Id, false);
+            Test.stopTest();
+        }
 
         // Should fail because only source lacks cold-chain capability
         System.assertEquals(false, result.success, 'Should fail with no suitable source');
@@ -247,10 +266,14 @@ private class InterStoreTransferServiceTest {
             noDEAStore.Id, med.Id, 150, 30, 180
         );
 
-        Test.startTest();
-        InterStoreTransferService.TransferResult result =
-            InterStoreTransferService.evaluate(target.Id, false);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            InterStoreTransferService.TransferResult result =
+                InterStoreTransferService.evaluate(target.Id, false);
+            Test.stopTest();
+        }
 
         // Should fail because source lacks DEA registration
         System.assertEquals(false, result.success, 'Should fail with no suitable source');
@@ -276,10 +299,14 @@ private class InterStoreTransferServiceTest {
             sourceStore.Id, med.Id, 100, 20, 15  // Expires in 15 days
         );
 
-        Test.startTest();
-        InterStoreTransferService.TransferResult result =
-            InterStoreTransferService.evaluate(target.Id, false);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            InterStoreTransferService.TransferResult result =
+                InterStoreTransferService.evaluate(target.Id, false);
+            Test.stopTest();
+        }
 
         // Should fail because source stock is near expiry
         System.assertEquals(false, result.success, 'Should fail with near-expiry source');
@@ -308,10 +335,14 @@ private class InterStoreTransferServiceTest {
             sourceStore.Id, med.Id, 150, 50, 120
         );
 
-        Test.startTest();
-        InterStoreTransferService.TransferResult result =
-            InterStoreTransferService.evaluate(target.Id, false);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            InterStoreTransferService.TransferResult result =
+                InterStoreTransferService.evaluate(target.Id, false);
+            Test.stopTest();
+        }
 
         // Should recommend 50 units (50% of 100 surplus = 50, min with 50 target need = 50)
         System.assertEquals(50, result.recommendedQty, 'Should calculate 50 units');
@@ -326,10 +357,14 @@ private class InterStoreTransferServiceTest {
         // Use fake ID that doesn't exist
         Id fakeId = '001000000000000AAA';
 
-        Test.startTest();
-        InterStoreTransferService.TransferResult result =
-            InterStoreTransferService.evaluate(fakeId, false);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            InterStoreTransferService.TransferResult result =
+                InterStoreTransferService.evaluate(fakeId, false);
+            Test.stopTest();
+        }
 
         // Should return error result
         System.assertEquals(false, result.success, 'Should fail with invalid ID');
@@ -363,10 +398,14 @@ private class InterStoreTransferServiceTest {
             bestSource.Id, med.Id, 300, 50, 130  // Highest quantity
         );
 
-        Test.startTest();
-        InterStoreTransferService.TransferResult result =
-            InterStoreTransferService.evaluate(target.Id, false);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            InterStoreTransferService.TransferResult result =
+                InterStoreTransferService.evaluate(target.Id, false);
+            Test.stopTest();
+        }
 
         // Should select the source with most surplus
         System.assertEquals(true, result.success, 'Should succeed');
@@ -392,10 +431,14 @@ private class InterStoreTransferServiceTest {
             sourceStore.Id, med.Id, 200, 50, 120
         );
 
-        Test.startTest();
-        InterStoreTransferService.TransferResult result =
-            InterStoreTransferService.evaluate(target.Id, false);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            InterStoreTransferService.TransferResult result =
+                InterStoreTransferService.evaluate(target.Id, false);
+            Test.stopTest();
+        }
 
         // Verify preview field is within limits
         Inventory_Position__c updatedTarget = [

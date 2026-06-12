@@ -71,13 +71,13 @@ jobs:
             --definition-file config/project-scratch-def.json \
             --artifacts "$ARTIFACT_DIR"
 
-      - name: Deploy AgentforcePharmaGrid
+      - name: Deploy AgentforcePharmaGrid (run local tests)
         run: |
           sf project deploy start \
             --source-dir force-app \
             --target-org "$SCRATCH_ALIAS" \
-            --test-level NoTestRun \
-            --wait 30 \
+            --test-level RunLocalTests \
+            --wait 60 \
             --json > "$ARTIFACT_DIR/deploy.json"
 
       - name: Assign IST operations permission set

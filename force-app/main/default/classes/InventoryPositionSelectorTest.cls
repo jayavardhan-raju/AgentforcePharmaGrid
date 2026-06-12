@@ -10,6 +10,9 @@ private class InventoryPositionSelectorTest {
 
     @TestSetup
     static void setupTestData() {
+        // Create a non-admin user with the IST_Ops_User permission set assigned
+        ISTTestDataFactory.createOpsUser();
+
         // Create stores
         Pharmacy_Store__c store1 = ISTTestDataFactory.createStore(
             'Store 1', true, 'DEA-001', true
@@ -45,9 +48,13 @@ private class InventoryPositionSelectorTest {
             store.Id, med.Id, 100, 50, 90
         );
 
-        Test.startTest();
-        Inventory_Position__c result = InventoryPositionSelector.getById(inv.Id);
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            Inventory_Position__c result = InventoryPositionSelector.getById(inv.Id);
+            Test.stopTest();
+        }
 
         // Assertions - verify all fields are retrieved
         System.assertNotEquals(null, result, 'Should retrieve record');
@@ -68,17 +75,21 @@ private class InventoryPositionSelectorTest {
      */
     @IsTest
     static void testGetByIdNullId() {
-        Test.startTest();
-        try {
-            InventoryPositionSelector.getById(null);
-            System.assert(false, 'Should throw IllegalArgumentException');
-        } catch (IllegalArgumentException ex) {
-            System.assert(
-                ex.getMessage().contains('cannot be null'),
-                'Should mention null parameter'
-            );
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            try {
+                InventoryPositionSelector.getById(null);
+                System.assert(false, 'Should throw IllegalArgumentException');
+            } catch (IllegalArgumentException ex) {
+                System.assert(
+                    ex.getMessage().contains('cannot be null'),
+                    'Should mention null parameter'
+                );
+            }
+            Test.stopTest();
         }
-        Test.stopTest();
     }
 
     /**
@@ -89,17 +100,21 @@ private class InventoryPositionSelectorTest {
     static void testGetByIdNonExistent() {
         Id fakeId = '001000000000000AAA';
 
-        Test.startTest();
-        try {
-            InventoryPositionSelector.getById(fakeId);
-            System.assert(false, 'Should throw QueryException');
-        } catch (QueryException ex) {
-            System.assert(
-                ex.getMessage().contains('not found'),
-                'Should mention record not found'
-            );
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            try {
+                InventoryPositionSelector.getById(fakeId);
+                System.assert(false, 'Should throw QueryException');
+            } catch (QueryException ex) {
+                System.assert(
+                    ex.getMessage().contains('not found'),
+                    'Should mention record not found'
+                );
+            }
+            Test.stopTest();
         }
-        Test.stopTest();
     }
 
     /**
@@ -125,13 +140,17 @@ private class InventoryPositionSelectorTest {
             store3.Id, med.Id, 100, 50, 85  // 50 surplus
         );
 
-        Test.startTest();
-        List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
-            med.Id,
-            store1.Id,  // Exclude store1
-            1
-        );
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+                med.Id,
+                store1.Id,  // Exclude store1
+                1
+            );
+            Test.stopTest();
+        }
 
         // Assertions
         System.assertEquals(2, results.size(), 'Should find 2 sources (excluding store1)');
@@ -155,13 +174,17 @@ private class InventoryPositionSelectorTest {
             store1.Id, med.Id, 100, 50, 90
         );
 
-        Test.startTest();
-        List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
-            med.Id,
-            store1.Id,  // Exclude the only store
-            1
-        );
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+                med.Id,
+                store1.Id,  // Exclude the only store
+                1
+            );
+            Test.stopTest();
+        }
 
         // Assertions
         System.assertEquals(0, results.size(), 'Should find no sources');
@@ -183,13 +206,17 @@ private class InventoryPositionSelectorTest {
             inactiveStore.Id, med.Id, 500, 50, 90
         );
 
-        Test.startTest();
-        List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
-            med.Id,
-            activeStore.Id,  // Exclude active store
-            1
-        );
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+                med.Id,
+                activeStore.Id,  // Exclude active store
+                1
+            );
+            Test.stopTest();
+        }
 
         // Assertions
         System.assertEquals(0, results.size(), 'Should not include inactive store');
@@ -211,13 +238,17 @@ private class InventoryPositionSelectorTest {
             store2.Id, med.Id, 10, 5, 90  // Only 5 surplus
         );
 
-        Test.startTest();
-        List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
-            med.Id,
-            store1.Id,
-            50  // Require minimum 50
-        );
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+                med.Id,
+                store1.Id,
+                50  // Require minimum 50
+            );
+            Test.stopTest();
+        }
 
         // Assertions
         System.assertEquals(0, results.size(), 'Should exclude source below minimum');
@@ -239,13 +270,17 @@ private class InventoryPositionSelectorTest {
             store2.Id, med.Id, 100, 50, 90
         );
 
-        Test.startTest();
-        List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
-            med.Id,
-            store1.Id,
-            null  // Null should default to 1
-        );
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+                med.Id,
+                store1.Id,
+                null  // Null should default to 1
+            );
+            Test.stopTest();
+        }
 
         // Assertions
         System.assertEquals(1, results.size(), 'Should find source with null minimum (defaults to 1)');
@@ -267,13 +302,17 @@ private class InventoryPositionSelectorTest {
             store2.Id, med.Id, 200, 50, 90
         );
 
-        Test.startTest();
-        List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
-            med.Id,
-            store1.Id,
-            1
-        );
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            List<Inventory_Position__c> results = InventoryPositionSelector.findSurplusSources(
+                med.Id,
+                store1.Id,
+                1
+            );
+            Test.stopTest();
+        }
 
         // Verify all fields are retrieved
         Inventory_Position__c result = results[0];
@@ -305,13 +344,17 @@ private class InventoryPositionSelectorTest {
             store.Id, med.Id, 100, 50, 90
         );
 
-        Test.startTest();
-        // Both methods should execute without error with security enforced
-        Inventory_Position__c result1 = InventoryPositionSelector.getById(inv.Id);
-        List<Inventory_Position__c> result2 = InventoryPositionSelector.findSurplusSources(
-            med.Id, store.Id, 1
-        );
-        Test.stopTest();
+        // Run as a non-admin user with the IST_Ops_User permission set
+        User opsUser = ISTTestDataFactory.getOpsUser();
+        System.runAs(opsUser) {
+            Test.startTest();
+            // Both methods should execute without error with security enforced
+            Inventory_Position__c result1 = InventoryPositionSelector.getById(inv.Id);
+            List<Inventory_Position__c> result2 = InventoryPositionSelector.findSurplusSources(
+                med.Id, store.Id, 1
+            );
+            Test.stopTest();
+        }
 
         // Verify queries executed successfully
         System.assertNotEquals(null, result1, 'getById should succeed with security enforced');
