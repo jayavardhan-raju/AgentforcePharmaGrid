@@ -79,36 +79,18 @@ try {
   evidence.workbook_id = workbookId;
   await shot("GRIDSTUDIO-002-grid-saved");
 
-  // Step 3: open the CSV import. Inside an opened grid this is the top-right
-  // "..." (kebab) menu -> "Import from CSV"; some layouts expose it directly.
-  await clickFirst(
-    [
-      page.getByRole("button", { name: /import from csv/i }),
-      page.getByRole("button", { name: /upload csv/i }),
-      page.getByRole("button", { name: /more (options|actions)/i }),
-      page.getByRole("button", { name: /^(menu|options|actions|show more)$/i }),
-      page.locator('button[aria-haspopup="true"]:visible').last(),
-      page.locator("header button:visible, [class*='header'] button:visible, [class*='toolbar'] button:visible").last(),
-      page.locator("button:visible").last(),
-    ],
-    "open the import / kebab (...) menu",
-  );
-  await page.waitForTimeout(2000);
-  await shot("GRIDSTUDIO-003-kebab-menu");
-
-  await clickFirst(
-    [
-      page.getByRole("menuitem", { name: /import from csv|upload csv/i }),
-      page.getByRole("option", { name: /import from csv|upload csv/i }),
-      page.getByText(/import from csv/i).first(),
-      page.getByText(/upload csv|import csv|from csv/i).first(),
-    ],
-    'choose "Import from CSV" from the menu',
-    { optional: true },
-  );
+  // Step 3: open the CSV import. On a freshly created grid the right-hand
+  // "Get Started" panel offers an "Upload File — Import data from a CSV" tile;
+  // that is the documented entry point. Falls back to the top-right "..." kebab
+  // menu if the panel has been dismissed.
+  await openCsvImport();
+  await shot("GRIDSTUDIO-003-import-opened");
 
   // Wait for the import modal, then make sure no workbook-id error already fired.
-  const modal = page.locator('[role="dialog"], .slds-modal, .uiModal').filter({ hasText: /import from csv/i }).first();
+  const modal = page
+    .locator('[role="dialog"], .slds-modal, .uiModal')
+    .filter({ hasText: /import from csv|import data from|upload file/i })
+    .first();
   await modal.waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
   await page.waitForTimeout(1500);
   await assertNoWorkbookIdError("after opening the import modal");
@@ -190,10 +172,16 @@ async function clickFirst(locators, description, { optional = false } = {}) {
   throw new Error(`Could not ${description}: no matching control found in the Agentforce Grid app`);
 }
 
-// Click "Create Grid" on the All Grids home, name the grid --grid-name, SAVE it,
-// and return its workbook id. Throws if a valid workbook id cannot be confirmed
-// — that is the precondition the "Please provide a valid workbook id" toast
-// complains about, so proceeding without it would only reproduce the failure.
+// Click "Create Grid" on the All Grids home, fill the "Create Grid" modal
+// (Grid Name + optional Description), click "Create", and return the new grid's
+// workbook id. Throws if a valid workbook id cannot be confirmed — that is the
+// precondition the "Please provide a valid workbook id" toast complains about,
+// so proceeding without it would only reproduce the failure.
+//
+// Observed modal (run evidence): title "Create Grid"; a required "Grid Name"
+// text input (placeholder "Enter a name..."); an optional "Description"
+// textarea (placeholder "Enter a description..."); Cancel / Create buttons,
+// where Create stays disabled until a name is entered.
 async function createAndSaveGrid() {
   // If we somehow already opened a grid (id present), reuse it.
   let id = getWorkbookId();
@@ -203,7 +191,7 @@ async function createAndSaveGrid() {
   }
 
   // The home shows two "Create Grid" controls (header button + empty-state CTA);
-  // either works. clickFirst takes the first visible one.
+  // either opens the same modal. clickFirst takes the first visible one.
   await clickFirst(
     [
       page.getByRole("button", { name: /create grid/i }),
@@ -213,80 +201,104 @@ async function createAndSaveGrid() {
     ],
     'click "Create Grid"',
   );
-  await page.waitForTimeout(2000);
-  await assertNoWorkbookIdError("after clicking Create Grid");
 
-  // A name dialog/field is presented for the new grid.
+  // Wait for the "Create Grid" modal.
+  const dialog = page.locator('[role="dialog"], .slds-modal, .uiModal').filter({ hasText: /create grid/i }).first();
+  await dialog.waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(1000);
+  await assertNoWorkbookIdError("after opening the Create Grid modal");
+
+  // Fill the required Grid Name.
   const nameInput = page
-    .locator(
-      'input[name="label"], input[name="name"], input[name="gridName"], input[placeholder*="name" i], input[aria-label*="name" i], .slds-modal input[type="text"]',
+    .getByPlaceholder(/enter a name/i)
+    .or(page.getByLabel(/grid name/i))
+    .or(
+      page.locator(
+        '.slds-modal input[type="text"]:visible, [role="dialog"] input[type="text"]:visible, input[name="gridName"], input[name="name"]',
+      ),
     )
     .first();
-  if ((await nameInput.count()) > 0 && (await nameInput.isVisible().catch(() => false))) {
-    await nameInput.fill(values["grid-name"]);
-    evidence.steps.push({ step: "name the grid", ok: true, name: values["grid-name"] });
-  } else {
-    evidence.steps.push({ step: "name the grid", ok: false, note: "no name field offered" });
+  await nameInput.waitFor({ state: "visible", timeout: 15000 });
+  await nameInput.fill(values["grid-name"]);
+  evidence.steps.push({ step: "fill Grid Name", ok: true, name: values["grid-name"] });
+
+  // Fill the optional Description.
+  const descInput = page
+    .getByPlaceholder(/enter a description/i)
+    .or(page.getByLabel(/description/i))
+    .or(page.locator('.slds-modal textarea:visible, [role="dialog"] textarea:visible'))
+    .first();
+  if ((await descInput.count()) > 0 && (await descInput.isVisible().catch(() => false))) {
+    await descInput.fill(`${values["grid-name"]} — inventory positions imported from CSV.`);
+    evidence.steps.push({ step: "fill Description", ok: true });
   }
 
-  // Save / create the grid so it is persisted and assigned a workbook id.
+  // Click "Create" (scoped to the modal so it cannot re-hit the home "Create
+  // Grid" button). The button enables once the name is present.
   await clickFirst(
     [
-      page.getByRole("button", { name: /^(save|create|done|next|ok)$/i }),
-      page.getByRole("button", { name: /save grid|create grid/i }),
+      dialog.getByRole("button", { name: /^create$/i }),
+      page.getByRole("button", { name: /^create$/i }),
+      dialog.getByRole("button", { name: /^(save|done)$/i }),
     ],
-    "save the new grid",
-    { optional: true },
+    'click "Create" in the Create Grid modal',
   );
 
-  // Wait for persistence and the id to appear (the URL updates when the grid
-  // builder opens).
+  // Wait for persistence and the id to appear (the URL updates when the new grid
+  // opens in the builder).
   for (let attempt = 0; attempt < 12; attempt += 1) {
     await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(1500);
-    await assertNoWorkbookIdError("while saving the grid");
+    await assertNoWorkbookIdError("while creating the grid");
     id = getWorkbookId();
     if (id) break;
   }
 
   if (!id) {
     throw new Error(
-      "Created/saved the grid but could not confirm a valid workbook id (no id found in the URL or page state). " +
-        "The import is not attempted, since it would fail with 'Please provide a valid workbook id'. " +
-        "Inspect GRIDSTUDIO-002-grid-saved.png to pin the post-save URL and id location.",
+      "Filled and submitted the Create Grid modal but could not confirm a valid workbook id " +
+        "(no id found in the URL or page state). The import is not attempted, since it would fail " +
+        "with 'Please provide a valid workbook id'. Inspect GRIDSTUDIO-002-grid-saved.png to pin " +
+        "the post-create URL and id location.",
     );
   }
-  evidence.steps.push({ step: "grid created and saved", ok: true, workbook_id: id });
+  const worksheetId = getWorksheetId();
+  evidence.worksheet_id = worksheetId;
+  evidence.steps.push({ step: "grid created", ok: true, workbook_id: id, worksheet_id: worksheetId });
   return id;
 }
 
-// Parse the grid/workbook id from the current URL (query, hash, or path). The
-// Lightning grid builder typically encodes it as a record id segment or param.
-function getWorkbookId() {
-  const keys = ["workbookId", "workbook_id", "wbId", "wbid", "c__workbookId", "gridId", "c__gridId", "id"];
+// Collect query params from both the standard query string AND the hash route.
+// After the grid is created the app navigates to (reference URL, ids differ per
+// scratch org):
+//   .../AgentforceGrid/gridStudio.app#/grid?gridId=1W4JW...&worksheetId=1W1JW...
+// so the ids live in the HASH query, not the normal query string.
+function getUrlParams() {
+  const out = {};
   try {
     const u = new URL(page.url());
-    for (const k of keys) {
-      const v = u.searchParams.get(k);
-      if (v) return v;
-    }
+    for (const [k, v] of u.searchParams) out[k] = v;
     if (u.hash && u.hash.includes("?")) {
       const hp = new URLSearchParams(u.hash.slice(u.hash.indexOf("?") + 1));
-      for (const k of keys) {
-        const v = hp.get(k);
-        if (v) return v;
-      }
-    }
-    // A 15- or 18-char Salesforce id anywhere in the URL (path or hash) once the
-    // grid is open, but never the WorkbenchHome landing page itself.
-    if (!/standard-WorkbenchHome(?:\b|$)/.test(u.href)) {
-      const sfId = u.href.match(/\b([a-zA-Z0-9]{15}|[a-zA-Z0-9]{18})\b/);
-      if (sfId) return sfId[1];
+      for (const [k, v] of hp) out[k] = v;
     }
   } catch {
     /* ignore malformed URL */
   }
-  return null;
+  return out;
+}
+
+// The workbook id Grid Studio requires is the `gridId` hash param. Accept a few
+// aliases defensively, but prefer gridId.
+function getWorkbookId() {
+  const p = getUrlParams();
+  return p.gridId || p.workbookId || p.workbook_id || p.wbId || p.c__workbookId || p.c__gridId || null;
+}
+
+// Worksheet one's id from the same hash route, used as the import destination.
+function getWorksheetId() {
+  const p = getUrlParams();
+  return p.worksheetId || p.c__worksheetId || p.sheetId || null;
 }
 
 // Detect the Grid error toast and fail with its text, so a workbook-id problem
@@ -301,6 +313,46 @@ async function assertNoWorkbookIdError(context) {
     evidence.steps.push({ step: `error toast ${context}`, ok: false, message: text.trim() });
     throw new Error(`Agentforce Grid reported "${text.trim()}" ${context}`);
   }
+}
+
+// Open the "Import from CSV" modal. Primary path is the "Get Started" panel's
+// "Upload File" / "Import data from a CSV" tile shown on a new grid; fallback is
+// the top-right "..." kebab -> "Import from CSV".
+async function openCsvImport() {
+  const opened = await clickFirst(
+    [
+      page.getByText(/import data from a csv/i).first(),
+      page.getByRole("button", { name: /upload file/i }),
+      page.getByRole("menuitem", { name: /upload file/i }),
+      page.getByText(/^upload file$/i).first(),
+    ],
+    'click "Upload File" (Import data from a CSV) in the Get Started panel',
+    { optional: true },
+  );
+
+  if (!opened) {
+    // Fallback: the top-right "..." (kebab) menu -> Import from CSV.
+    await clickFirst(
+      [
+        page.getByRole("button", { name: /import from csv|upload csv/i }),
+        page.getByRole("button", { name: /more (options|actions)/i }),
+        page.locator('button[aria-haspopup="true"]:visible').last(),
+        page.locator("header button:visible, [class*='header'] button:visible, [class*='toolbar'] button:visible").last(),
+      ],
+      "open the top-right (...) menu",
+    );
+    await page.waitForTimeout(1500);
+    await clickFirst(
+      [
+        page.getByRole("menuitem", { name: /import from csv|upload csv/i }),
+        page.getByRole("option", { name: /import from csv|upload csv/i }),
+        page.getByText(/import from csv/i).first(),
+      ],
+      'choose "Import from CSV" from the menu',
+      { optional: true },
+    );
+  }
+  await page.waitForTimeout(1500);
 }
 
 // Attach the CSV inside the import modal. Prefer setting the modal's
