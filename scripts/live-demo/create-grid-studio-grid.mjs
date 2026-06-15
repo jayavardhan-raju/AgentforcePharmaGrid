@@ -208,25 +208,25 @@ async function createAndSaveGrid() {
   await page.waitForTimeout(1000);
   await assertNoWorkbookIdError("after opening the Create Grid modal");
 
-  // Fill the required Grid Name.
+  // Fill the required Grid Name. Match strictly on the modal placeholder
+  // ("Enter a name..."). Do NOT use getByLabel(/grid name/i): the All Grids list
+  // view renders a hidden <th aria-label="Grid Name"> column header that
+  // getByLabel matches, and .first() picks that hidden header over the modal
+  // input — the exact cause of the CI TimeoutError at this step. Placeholders
+  // only exist on the modal inputs, so they are unambiguous.
   const nameInput = page
     .getByPlaceholder(/enter a name/i)
-    .or(page.getByLabel(/grid name/i))
-    .or(
-      page.locator(
-        '.slds-modal input[type="text"]:visible, [role="dialog"] input[type="text"]:visible, input[name="gridName"], input[name="name"]',
-      ),
-    )
+    .or(page.locator('input[name="gridName"]'))
     .first();
-  await nameInput.waitFor({ state: "visible", timeout: 15000 });
+  await nameInput.waitFor({ state: "visible", timeout: 20000 });
   await nameInput.fill(values["grid-name"]);
   evidence.steps.push({ step: "fill Grid Name", ok: true, name: values["grid-name"] });
 
-  // Fill the optional Description.
+  // Fill the optional Description (same placeholder-only rationale; avoids the
+  // hidden <th aria-label="Description"> column header).
   const descInput = page
     .getByPlaceholder(/enter a description/i)
-    .or(page.getByLabel(/description/i))
-    .or(page.locator('.slds-modal textarea:visible, [role="dialog"] textarea:visible'))
+    .or(page.locator('textarea[name="description"]'))
     .first();
   if ((await descInput.count()) > 0 && (await descInput.isVisible().catch(() => false))) {
     await descInput.fill(`${values["grid-name"]} — inventory positions imported from CSV.`);
