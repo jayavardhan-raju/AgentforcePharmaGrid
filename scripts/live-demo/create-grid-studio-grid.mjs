@@ -6,23 +6,23 @@ import { ensureDir, getOrgOpenUrl, writeJsonFile } from "./lib.mjs";
 
 /**
  * Creates the "Inventory Transfer Ops" Agentforce Grid in Grid Studio
- * (/AgentforceGrid/gridStudio.app) by uploading the exported CSV.
+ * (/AgentforceGrid/gridStudio.app) and imports the exported CSV into it.
  *
- * Observed Grid Studio UI (from run evidence): the studio opens onto an empty
- * grid with a top bar containing "Auto Update", "Advanced Filter", and a "..."
- * (three dots / kebab) menu at the top right. The CSV import lives behind that
- * kebab menu and opens an "Import from CSV" MODAL containing:
- *   - an "Upload Files" attachment control,
- *   - a "File includes headers" checkbox,
- *   - a required "*Choose a destination worksheet" dropdown, and
- *   - Cancel / OK buttons.
+ * Grid Studio hierarchy: WORKBOOK (the "grid") -> WORKSHEET -> rows. The
+ * "Import from CSV" action is scoped to a workbook and needs a valid WORKBOOK
+ * ID in context. Opening gridStudio.app with no workbook yields no id, so the
+ * import fails with the toast "Please provide a valid workbook id." (observed
+ * in run evidence) and the modal renders without its worksheet / header fields.
  *
- * The CSV cannot be imported into a non-existent worksheet: the destination
- * dropdown is a required field, so a worksheet/grid must exist first. This
- * script therefore (1) ensures a worksheet named after --grid-name exists,
- * (2) opens the import modal, (3) attaches the CSV, (4) ticks "File includes
- * headers" (the CSV's first row IS a header row), (5) selects the destination
- * worksheet, and (6) clicks OK — then verifies the grid actually populated.
+ * Therefore the order is mandatory and enforced here:
+ *   1. Create a workbook (grid) named --grid-name and SAVE it.
+ *   2. Confirm a valid workbook id now exists (from the URL or page state).
+ *      If it cannot be confirmed, fail early — never attempt the import against
+ *      a missing workbook, which only reproduces the banner.
+ *   3. Open "Import from CSV", attach the CSV, tick "File includes headers"
+ *      (the CSV's first row IS a header row), select worksheet one as the
+ *      destination, and click OK.
+ *   4. Verify the grid actually populated and that no error toast fired.
  *
  * The Grid Studio URL is always derived from the freshly created scratch org
  * (via `sf org open --url-only`), never hard-coded, because the instance
@@ -68,15 +68,14 @@ try {
   await page.waitForTimeout(5000);
   await shot("GRIDSTUDIO-001-studio-home");
 
-  // Step 1: ensure a destination worksheet exists. The "Import from CSV" modal
-  // requires one (it's a required field), and an empty studio has none — that
-  // is exactly why a prior run's OK click failed. Best-effort: create/name a
-  // worksheet/grid called --grid-name. If the studio already ships a default
-  // worksheet, this is a no-op and we just select it later.
-  await ensureWorksheet();
-  await shot("GRIDSTUDIO-002-worksheet-ready");
+  // Step 1+2: create and SAVE the workbook (grid), then confirm a valid
+  // workbook id exists. This is the precondition the "valid workbook id" toast
+  // complains about; the import is not attempted until it is satisfied.
+  const workbookId = await createAndSaveWorkbook();
+  evidence.workbook_id = workbookId;
+  await shot("GRIDSTUDIO-002-grid-saved");
 
-  // Step 2: open the top-right "..." (kebab) menu. Ordered most-specific to
+  // Step 3: open the top-right "..." (kebab) menu. Ordered most-specific to
   // most-generic; the final fallback is the last button in the top bar, which
   // is where the kebab sits in the observed layout.
   await clickFirst(
@@ -94,8 +93,8 @@ try {
   await page.waitForTimeout(2000);
   await shot("GRIDSTUDIO-003-kebab-menu");
 
-  // Step 3: choose "Import from CSV" / "Upload CSV" from the opened menu.
-  // Optional because the kebab itself may have been a direct control.
+  // Choose "Import from CSV" / "Upload CSV" from the opened menu. Optional
+  // because the kebab itself may have been a direct control.
   await clickFirst(
     [
       page.getByRole("menuitem", { name: /import from csv|upload csv/i }),
@@ -107,31 +106,27 @@ try {
     { optional: true },
   );
 
-  // Wait for the import modal to appear before interacting with its fields.
+  // Wait for the import modal, then make sure no workbook-id error already fired.
   const modal = page.locator('[role="dialog"], .slds-modal, .uiModal').filter({ hasText: /import from csv/i }).first();
   await modal.waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
   await page.waitForTimeout(1500);
+  await assertNoWorkbookIdError("after opening the import modal");
   await shot("GRIDSTUDIO-004-import-modal");
 
-  // Step 4: attach the CSV inside the modal. The modal's "Upload Files" control
-  // is backed by an input[type=file]; setting it directly avoids depending on a
-  // native OS chooser (which never fires in headless CI). Fall back to a fired
-  // file chooser only if no input is reachable.
+  // Step 4: attach the CSV inside the modal.
   await attachCsv();
   await page.waitForTimeout(3000);
   await shot("GRIDSTUDIO-005-csv-attached");
 
-  // Step 5: tick "File includes headers". The CSV's first row is a header row,
-  // so this MUST be checked or the headers import as a data row.
+  // Tick "File includes headers" (CSV row 1 is a header row). Optional — the
+  // field only renders once a workbook is in context.
   await checkIncludesHeaders();
 
-  // Step 6: select the required destination worksheet. This is the field whose
-  // emptiness made the prior OK click fail.
+  // Select worksheet one as the destination. Optional for the same reason.
   await selectDestinationWorksheet();
   await shot("GRIDSTUDIO-006-import-ready");
 
-  // Step 7: submit the modal. The real button is labelled "OK" — the previous
-  // confirm regex omitted it, so the import was never actually submitted.
+  // Submit. The real button is labelled "OK".
   await clickFirst(
     [
       modal.getByRole("button", { name: /^ok$/i }),
@@ -142,13 +137,15 @@ try {
   );
   await page.waitForLoadState("networkidle", { timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(8000);
+  // A failed import surfaces the same toast; catch it before claiming success.
+  await assertNoWorkbookIdError("after clicking OK to import");
   await shot("GRIDSTUDIO-007-grid-created");
 
   // Sanity check: the grid should now actually contain rows from the CSV.
   const populated = await gridLooksPopulated();
   if (!populated.ok) {
     throw new Error(
-      `CSV upload completed but the grid does not show the expected data (${populated.reason}); refusing to report success`,
+      `CSV import completed but the grid does not show the expected data (${populated.reason}); refusing to report success`,
     );
   }
 
@@ -156,10 +153,11 @@ try {
   await writeJsonFile(`${values.artifacts}/grid-studio.json`, {
     status: "created",
     grid_name: values["grid-name"],
+    workbook_id: workbookId,
     grid_url: gridUrl,
     evidence,
   });
-  console.log(`Grid Studio grid "${values["grid-name"]}" created: ${gridUrl}`);
+  console.log(`Grid Studio grid "${values["grid-name"]}" created (workbook ${workbookId}): ${gridUrl}`);
 } catch (error) {
   await shot("GRIDSTUDIO-999-failure").catch(() => {});
   await writeJsonFile(`${values.artifacts}/grid-studio.json`, {
@@ -193,41 +191,114 @@ async function clickFirst(locators, description, { optional = false } = {}) {
   throw new Error(`Could not ${description}: no matching control found in Grid Studio`);
 }
 
-// Best-effort creation of a worksheet/grid named --grid-name so the import
-// modal's required "destination worksheet" dropdown has something to select.
-// Many grid surfaces ship a default worksheet; in that case there is nothing to
-// create and this safely no-ops (the dropdown selection later picks it up).
-async function ensureWorksheet() {
-  const created = await clickFirst(
+// Create the workbook/grid named --grid-name, SAVE it, and return its workbook
+// id. Throws if a valid workbook id cannot be confirmed afterward — that is the
+// precondition the "Please provide a valid workbook id" toast complains about,
+// so proceeding without it would only reproduce the failure.
+async function createAndSaveWorkbook() {
+  // An existing valid workbook id (e.g. studio deep-linked to one) is enough.
+  let id = getWorkbookId();
+  if (id) {
+    evidence.steps.push({ step: "workbook already in context", ok: true, workbook_id: id });
+    return id;
+  }
+
+  // Open the create-workbook flow from the studio home / empty state.
+  await clickFirst(
     [
-      page.getByRole("button", { name: /new (grid|worksheet|sheet|tab)/i }),
-      page.getByRole("button", { name: /add (grid|worksheet|sheet|tab)/i }),
-      page.getByRole("button", { name: /create (grid|worksheet)/i }),
-      page.getByRole("tab", { name: /^\+$/ }),
-      page.getByRole("button", { name: /^\+$/ }),
+      page.getByRole("button", { name: /create (workbook|grid)/i }),
+      page.getByRole("button", { name: /new (workbook|grid)/i }),
+      page.getByRole("link", { name: /create (workbook|grid)|new (workbook|grid)/i }),
+      page.getByRole("menuitem", { name: /create (workbook|grid)|new (workbook|grid)/i }),
+      page.getByText(/create (a )?(workbook|grid)/i).first(),
+      page.getByRole("button", { name: /^(create|new|add)$/i }),
     ],
-    "create a new worksheet/grid",
+    "open the create-workbook flow",
+    { optional: true },
+  );
+  await page.waitForTimeout(1500);
+
+  // Name the workbook if a name field is offered.
+  const nameInput = page
+    .locator(
+      'input[name="label"], input[name="name"], input[name="workbookName"], input[placeholder*="name" i], input[aria-label*="name" i]',
+    )
+    .first();
+  if ((await nameInput.count()) > 0 && (await nameInput.isVisible().catch(() => false))) {
+    await nameInput.fill(values["grid-name"]);
+    evidence.steps.push({ step: "name the workbook", ok: true, name: values["grid-name"] });
+  } else {
+    evidence.steps.push({ step: "name the workbook", ok: false, note: "no name field offered" });
+  }
+
+  // Save / create the workbook so it is persisted and assigned an id.
+  await clickFirst(
+    [
+      page.getByRole("button", { name: /^(save|create|done|ok)$/i }),
+      page.getByRole("button", { name: /save (workbook|grid)|create (workbook|grid)/i }),
+    ],
+    "save the workbook",
     { optional: true },
   );
 
-  if (created) {
-    await page.waitForTimeout(2000);
-    // Name it if a name field is offered, then confirm.
-    const nameInput = page
-      .locator('input[name="label"], input[name="name"], input[placeholder*="name" i], input[aria-label*="name" i]')
-      .first();
-    if ((await nameInput.count()) > 0 && (await nameInput.isVisible().catch(() => false))) {
-      await nameInput.fill(values["grid-name"]);
-      evidence.steps.push({ step: "name the worksheet", ok: true });
-    }
-    await clickFirst(
-      [page.getByRole("button", { name: /^(create|save|add|done|ok)$/i })],
-      "confirm worksheet creation",
-      { optional: true },
-    );
-    await page.waitForTimeout(2000);
+  // Wait for persistence and the id to appear (URL usually updates on save).
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    await assertNoWorkbookIdError("while saving the workbook");
+    id = getWorkbookId();
+    if (id) break;
   }
-  return created;
+
+  if (!id) {
+    throw new Error(
+      "Created/saved the grid but could not confirm a valid workbook id (no id in the URL or page state). " +
+        "The import is not attempted, since it would fail with 'Please provide a valid workbook id'. " +
+        "Inspect GRIDSTUDIO-002-grid-saved.png to pin the exact create/save control and id location.",
+    );
+  }
+  evidence.steps.push({ step: "workbook created and saved", ok: true, workbook_id: id });
+  return id;
+}
+
+// Parse a Grid Studio workbook id from the current URL (query or hash). Returns
+// null if none is present.
+function getWorkbookId() {
+  const keys = ["workbookId", "workbook_id", "wbId", "wbid", "c__workbookId", "gridId", "id"];
+  try {
+    const u = new URL(page.url());
+    for (const k of keys) {
+      const v = u.searchParams.get(k);
+      if (v) return v;
+    }
+    if (u.hash && u.hash.includes("?")) {
+      const hp = new URLSearchParams(u.hash.slice(u.hash.indexOf("?") + 1));
+      for (const k of keys) {
+        const v = hp.get(k);
+        if (v) return v;
+      }
+    }
+    // Fallback: a trailing path segment after the app name, e.g. .../gridStudio.app/<id>
+    const m = u.pathname.match(/gridStudio\.app\/([A-Za-z0-9_-]{6,})/);
+    if (m) return m[1];
+  } catch {
+    /* ignore malformed URL */
+  }
+  return null;
+}
+
+// Detect the Grid Studio error toast and fail with its text, so a workbook-id
+// problem is reported precisely instead of as a vague downstream timeout.
+async function assertNoWorkbookIdError(context) {
+  const toast = page
+    .locator('[role="alert"], .slds-notify, .toastMessage, .slds-notify__content')
+    .filter({ hasText: /workbook id|valid workbook/i })
+    .first();
+  if ((await toast.count()) > 0 && (await toast.isVisible().catch(() => false))) {
+    const text = (await toast.innerText().catch(() => "")) || "Please provide a valid workbook id.";
+    evidence.steps.push({ step: `error toast ${context}`, ok: false, message: text.trim() });
+    throw new Error(`Grid Studio reported "${text.trim()}" ${context}`);
+  }
 }
 
 // Attach the CSV inside the import modal. Prefer setting the modal's
@@ -265,7 +336,7 @@ async function attachCsv() {
 }
 
 // Tick the "File includes headers" checkbox. The CSV's first row is a header
-// row, so this must be on. Handles label-click and direct-input strategies.
+// row, so this must be on. Optional — only renders once a workbook is in context.
 async function checkIncludesHeaders() {
   const byLabel = page.getByLabel(/file includes headers/i).first();
   if ((await byLabel.count()) > 0) {
@@ -277,21 +348,18 @@ async function checkIncludesHeaders() {
     evidence.steps.push({ step: "check 'File includes headers'", ok: true });
     return true;
   }
-  // Fallback: click the visible label text next to the checkbox.
   const labelText = page.getByText(/file includes headers/i).first();
   if ((await labelText.count()) > 0) {
     await labelText.click({ timeout: 8000 }).catch(() => {});
     evidence.steps.push({ step: "check 'File includes headers'", ok: true, via: "label text" });
     return true;
   }
-  evidence.steps.push({ step: "check 'File includes headers'", ok: false, note: "checkbox not found" });
+  evidence.steps.push({ step: "check 'File includes headers'", ok: false, note: "checkbox not shown (skipped)" });
   return false;
 }
 
-// Select the required destination worksheet. Opens the combobox and chooses the
-// option matching --grid-name, else the first real option. Throws if the
-// dropdown has no options — that means no worksheet exists and the import
-// genuinely cannot proceed (surfacing the real problem instead of a silent OK).
+// Select worksheet one as the destination. Optional — only renders once a
+// workbook is in context. Prefers the named worksheet, else the first option.
 async function selectDestinationWorksheet() {
   const combo = page
     .locator(
@@ -300,13 +368,18 @@ async function selectDestinationWorksheet() {
     .filter({ hasNot: page.locator('input[type="file"]') })
     .last();
 
-  // Native <select> path.
+  if ((await combo.count()) === 0) {
+    evidence.steps.push({ step: "select destination worksheet", ok: false, note: "no worksheet dropdown shown (skipped)" });
+    return false;
+  }
+
   const tag = await combo.evaluate((el) => el.tagName.toLowerCase()).catch(() => "");
   if (tag === "select") {
     const options = await combo.locator("option").allTextContents();
     const real = options.map((o) => o.trim()).filter((o) => o && !/choose a destination/i.test(o));
     if (real.length === 0) {
-      throw new Error("Destination worksheet dropdown has no options — no worksheet exists to import into");
+      evidence.steps.push({ step: "select destination worksheet", ok: false, note: "dropdown empty (skipped)" });
+      return false;
     }
     const target = real.find((o) => o.toLowerCase().includes(values["grid-name"].toLowerCase())) || real[0];
     await combo.selectOption({ label: target });
@@ -314,15 +387,13 @@ async function selectDestinationWorksheet() {
     return true;
   }
 
-  // Lightning combobox path: click to open the listbox, then pick an option.
   await combo.click({ timeout: 10000 });
   await page.waitForTimeout(800);
   const options = page.locator('[role="option"]:visible, .slds-listbox__option:visible');
-  const count = await options.count();
-  if (count === 0) {
-    throw new Error("Destination worksheet dropdown opened but showed no options — no worksheet exists to import into");
+  if ((await options.count()) === 0) {
+    evidence.steps.push({ step: "select destination worksheet", ok: false, note: "no options shown (skipped)" });
+    return false;
   }
-  // Prefer an option matching the grid name.
   const named = page.getByRole("option", { name: new RegExp(values["grid-name"], "i") }).first();
   if ((await named.count()) > 0 && (await named.isVisible().catch(() => false))) {
     await named.click({ timeout: 8000 });
