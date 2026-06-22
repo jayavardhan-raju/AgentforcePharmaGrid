@@ -181,18 +181,4 @@ Once created, test the prompt template with the Agentforce Grid:
 - Check that USER_MODE is enforced (field-level security)
 - Verify the agent has read access to all referenced fields
 
-### Recommendations Exceeding 150 Characters
-
-- Prompt template may need rule refinement
-- Use LLM parameter adjustment (temperature, max_tokens) if available
-- Trim recommendation text to fit column width
-
----
-
-## Related Documentation
-
-- [Agentforce Grid Integration](../api-reference/agentforce-grid.html) — how the Grid binds this template to the Recommendation column
-- [Architecture Overview](../architecture/overview.html) — where the prompt template sits in the layered architecture
-- [Data Model Reference](../architecture/data-model.html) — the `Inventory_Position__c` fields the system prompt merges
-- [Deployment Guide](deployment.html) — runs `PostInstallScript.verifyPromptTemplate()` after deploy and logs a `WARN` until this template exists
-
+### Recommendations Exceeding 150 Cha
