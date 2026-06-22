@@ -51,7 +51,7 @@ Analyse the inventory record below and generate a concise, actionable
 recommendation in 1-2 sentences maximum.
 
 INVENTORY RECORD:
-- Record ID: {!$Input:Inventory_Position__c.Id} 
+- Record ID: {!$Input:Inventory_Position__c.Id}
 - Store: {!$Input:Inventory_Position__c.Store__r.Name}
 - Medication: {!$Input:Inventory_Position__c.Medication__r.Name}
 - DEA Schedule: {!$Input:Inventory_Position__c.Medication__r.DEA_Schedule__c}
@@ -61,26 +61,33 @@ INVENTORY RECORD:
 - Expiry Date: {!$Input:Inventory_Position__c.Expiry_Date__c}
 - Status: {!$Input:Inventory_Position__c.Status__c}
 
-RULES YOU MUST FOLLOW:
-1. If DEA Schedule is "II" output exactly:
-  "Schedule II: Manual DEA Form 222 transfer required. No automated action available."
+RULES YOU MUST FOLLOW (apply in this exact order — stop at the first match):
 
-2. If Status is "Critical" (Quantity <= 0) AND DEA Schedule is NOT "II" output:
-  "Critical stock. Recommend initiating inter-store transfer via Transfer/Optimize action."
+1. DEA SCHEDULE OVERRIDE
+   If DEA Schedule equals "II", output exactly:
+   "Schedule II: Manual DEA Form 222 transfer required. No automated action available."
+   (This rule overrides all others — do not evaluate any rule below.)
 
-3. If Status is "Adequate" AND Quantity is less than double the Safety Stock output:
-  "Stock adequate but approaching reorder threshold. Monitor closely."
+2. STATUS DISPATCH
+   Output text is determined by the Status value:
+   - Status = "OUT_OF_STOCK" → output:
+     "Critical stock. Recommend initiating inter-store transfer via Transfer/Optimize action."
+   - Status = "LOW" → output:
+     "Stock below safety threshold. Recommend initiating inter-store transfer via Transfer/Optimize action."
+   - Status = "HEALTHY" AND Quantity is less than double the Safety Stock → output:
+     "Stock adequate but approaching reorder threshold. Monitor closely."
+   - Status = "HEALTHY" AND Quantity is greater than or equal to double the Safety Stock → output:
+     "Stock levels healthy. No action required at this time."
+   - Status = "UNKNOWN" → output:
+     "Safety stock not configured. Set Safety_Stock__c to enable recommendations."
 
-4. If Status is "Adequate" AND Quantity is greater than or equal to double the Safety Stock output:
-  "Stock levels healthy. No action required at this time."
+3. EXPIRY ALERT PREFIX
+   If Expiry Date is within 30 days from today, prefix the rule 1 or rule 2 output with:
+   "EXPIRY ALERT: "
 
-5. If Expiry Date is within 30 days from today prefix your output with:
-  "EXPIRY ALERT: [your recommendation]"
-
-6. Never recommend specific transfer quantities in this column.
-  Quantities are calculated by the Transfer/Optimize action at execution time.
-
-7. Keep the entire output under 150 characters so it fits cleanly in the Grid column.
+4. CONSTRAINTS
+   - Never recommend specific transfer quantities (those are calculated by the Transfer/Optimize action at execution time).
+   - Keep total output under 150 characters.
 
 OUTPUT ONLY THE RECOMMENDATION TEXT.
 No preamble. No explanation. No JSON. No labels. Just the recommendation sentence.
@@ -137,10 +144,12 @@ Once created, test the prompt template with the Agentforce Grid:
 | Scenario | Expected Output |
 |----------|---|
 | Schedule II medication | `Schedule II: Manual DEA Form 222 transfer required. No automated action available.` |
-| Critical stock (Qty=0, non-Schedule II) | `Critical stock. Recommend initiating inter-store transfer via Transfer/Optimize action.` |
-| Adequate stock, approaching threshold | `Stock adequate but approaching reorder threshold. Monitor closely.` |
-| Healthy stock | `Stock levels healthy. No action required at this time.` |
-| Expiring soon (within 30 days) | `EXPIRY ALERT: [recommendation text]` |
+| Status = OUT_OF_STOCK (non-Schedule II) | `Critical stock. Recommend initiating inter-store transfer via Transfer/Optimize action.` |
+| Status = LOW (non-Schedule II) | `Stock below safety threshold. Recommend initiating inter-store transfer via Transfer/Optimize action.` |
+| Status = HEALTHY, Qty < 2× Safety Stock | `Stock adequate but approaching reorder threshold. Monitor closely.` |
+| Status = HEALTHY, Qty ≥ 2× Safety Stock | `Stock levels healthy. No action required at this time.` |
+| Status = UNKNOWN | `Safety stock not configured. Set Safety_Stock__c to enable recommendations.` |
+| Expiring soon (within 30 days) | `EXPIRY ALERT: <recommendation text>` |
 
 ---
 
@@ -148,12 +157,12 @@ Once created, test the prompt template with the Agentforce Grid:
 
 - ✓ Prompt Template name: `IST Inventory Recommendation`
 - ✓ API Name: `IST_Inventory_Recommendation`
-- ✓ System Prompt contains all seven rules
+- ✓ System Prompt contains all four ordered rule groups
 - ✓ Merge fields reference Inventory_Position__c fields
 - ✓ Template is saved and activated
 - ✓ Grid displays recommendations under 150 characters
 - ✓ DEA compliance rules are enforced
-- ✓ No transfer quantities are recommended (per Rule 6)
+- ✓ No transfer quantities are recommended (per Rule 4 — Constraints)
 
 ---
 
