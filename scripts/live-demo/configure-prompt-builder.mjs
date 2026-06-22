@@ -23,20 +23,36 @@ INVENTORY RECORD:
 - Expiry Date: {!$Input:Inventory_Position__c.Expiry_Date__c}
 - Status: {!$Input:Inventory_Position__c.Status__c}
 
-RULES YOU MUST FOLLOW:
-1. If DEA Schedule is "II" output exactly:
-"Schedule II: Manual DEA Form 222 transfer required. No automated action available."
-2. If Status is "Critical" or "OUT_OF_STOCK" and DEA Schedule is not "II" output:
-"Critical stock. Recommend initiating inter-store transfer via Transfer/Optimize action."
-3. If stock is adequate but below double safety stock output:
-"Stock adequate but approaching reorder threshold. Monitor closely."
-4. If stock is healthy output:
-"Stock levels healthy. No action required at this time."
-5. If Expiry Date is within 30 days from today prefix your output with "EXPIRY ALERT: ".
-6. Never recommend specific transfer quantities in this column.
-7. Keep the entire output under 150 characters.
+RULES YOU MUST FOLLOW (apply in this exact order — stop at the first match):
 
-OUTPUT ONLY THE RECOMMENDATION TEXT.`,
+1. DEA SCHEDULE OVERRIDE
+   If DEA Schedule equals "II", output exactly:
+   "Schedule II: Manual DEA Form 222 transfer required. No automated action available."
+   (This rule overrides all others — do not evaluate any rule below.)
+
+2. STATUS DISPATCH
+   Output text is determined by the Status value:
+   - Status = "OUT_OF_STOCK" → output:
+     "Critical stock. Recommend initiating inter-store transfer via Transfer/Optimize action."
+   - Status = "LOW" → output:
+     "Stock below safety threshold. Recommend initiating inter-store transfer via Transfer/Optimize action."
+   - Status = "HEALTHY" AND Quantity is less than double the Safety Stock → output:
+     "Stock adequate but approaching reorder threshold. Monitor closely."
+   - Status = "HEALTHY" AND Quantity is greater than or equal to double the Safety Stock → output:
+     "Stock levels healthy. No action required at this time."
+   - Status = "UNKNOWN" → output:
+     "Safety stock not configured. Set Safety_Stock__c to enable recommendations."
+
+3. EXPIRY ALERT PREFIX
+   If Expiry Date is within 30 days from today, prefix the rule 1 or rule 2 output with:
+   "EXPIRY ALERT: "
+
+4. CONSTRAINTS
+   - Never recommend specific transfer quantities (those are calculated by the Transfer/Optimize action at execution time).
+   - Keep total output under 150 characters.
+
+OUTPUT ONLY THE RECOMMENDATION TEXT.
+No preamble. No explanation. No JSON. No labels. Just the recommendation sentence.`,
 };
 
 const { values } = parseArgs({
