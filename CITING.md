@@ -24,7 +24,7 @@ If the button doesn't appear, confirm `CITATION.cff` is at the repo root on the 
   year      = {2026},
   month     = {5},
   url       = {https://github.com/jayavardhan-raju/AgentforcePharmaGrid},
-  doi       = {10.5281/zenodo.20283941},
+  doi       = {10.5281/zenodo.20825765},
   version   = {1.0.0},
   note      = {Salesforce DX project; Apex, Flow, and admin-authored GenAiPromptTemplate}
 }
@@ -32,19 +32,19 @@ If the button doesn't appear, confirm `CITATION.cff` is at the repo root on the 
 
 ### APA (7th Edition)
 
-> Raju, J. (2026). *AgentforcePharmaGrid: Agentforce Grid–driven inter-store inventory transfers with DEA compliance and audit trail for Salesforce* (Version 1.0.0) [Computer software]. https://doi.org/10.5281/zenodo.20283941
+> Raju, J. (2026). *AgentforcePharmaGrid: Agentforce Grid–driven inter-store inventory transfers with DEA compliance and audit trail for Salesforce* (Version 1.0.0) [Computer software]. https://doi.org/10.5281/zenodo.20825765
 
 ### IEEE
 
-> J. Raju, "AgentforcePharmaGrid: Agentforce Grid–driven inter-store inventory transfers with DEA compliance and audit trail for Salesforce," ver. 1.0.0, 2026, doi: 10.5281/zenodo.20283941. [Online]. Available: https://github.com/jayavardhan-raju/AgentforcePharmaGrid
+> J. Raju, "AgentforcePharmaGrid: Agentforce Grid–driven inter-store inventory transfers with DEA compliance and audit trail for Salesforce," ver. 1.0.0, 2026, doi: 10.5281/zenodo.20825765. [Online]. Available: https://github.com/jayavardhan-raju/AgentforcePharmaGrid
 
 ### Chicago (Author-Date)
 
-> Raju, Jayavardhan. 2026. *AgentforcePharmaGrid: Agentforce Grid–Driven Inter-Store Inventory Transfers with DEA Compliance and Audit Trail for Salesforce*. Version 1.0.0. Zenodo. https://doi.org/10.5281/zenodo.20283941.
+> Raju, Jayavardhan. 2026. *AgentforcePharmaGrid: Agentforce Grid–Driven Inter-Store Inventory Transfers with DEA Compliance and Audit Trail for Salesforce*. Version 1.0.0. Zenodo. https://doi.org/10.5281/zenodo.20825765.
 
 ### Plain Text
 
-> Raju, Jayavardhan. AgentforcePharmaGrid: Agentforce Grid–Driven Inter-Store Inventory Transfers with DEA Compliance and Audit Trail for Salesforce. Version 1.0.0. May 2026. Zenodo. https://doi.org/10.5281/zenodo.20283941
+> Raju, Jayavardhan. AgentforcePharmaGrid: Agentforce Grid–Driven Inter-Store Inventory Transfers with DEA Compliance and Audit Trail for Salesforce. Version 1.0.0. May 2026. Zenodo. https://doi.org/10.5281/zenodo.20825765
 
 ---
 
@@ -68,7 +68,7 @@ If a blog post, talk, or article describes the design or rationale for Agentforc
 
 ## DOI
 
-This project is archived on Zenodo with the **Concept DOI** [10.5281/zenodo.20283941](https://doi.org/10.5281/zenodo.20283941) — it always resolves to the latest released version. Each tagged GitHub release also receives its own version-specific DOI for reproducibility.
+This project is archived on Zenodo with the **Concept DOI** [10.5281/zenodo.20825765](https://doi.org/10.5281/zenodo.20825765) — it always resolves to the latest released version. Each tagged GitHub release also receives its own version-specific DOI for reproducibility.
 
 The DOI is wired into:
 
@@ -81,7 +81,7 @@ If you fork this project and want a fresh DOI for your fork, enable the repo at 
 **Badge markdown** (already in the README):
 
 ```markdown
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20283941.svg)](https://doi.org/10.5281/zenodo.20283941)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20825765.svg)](https://doi.org/10.5281/zenodo.20825765)
 ```
 
 ---

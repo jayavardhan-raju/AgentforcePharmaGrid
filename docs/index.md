@@ -37,7 +37,7 @@ There is no LWC, no middleware, and no external service. Every component is plat
 - [Launch Live Demo](live-demo.html)
 - [Demo Playbook](https://github.com/jayavardhan-raju/AgentforcePharmaGrid/blob/main/scripts/DEMO_PLAYBOOK.md)
 - [Citation Guide](https://github.com/jayavardhan-raju/AgentforcePharmaGrid/blob/main/CITING.md)
-- [Zenodo DOI 10.5281/zenodo.20283941](https://doi.org/10.5281/zenodo.20283941)
+- [Zenodo DOI 10.5281/zenodo.20825765](https://doi.org/10.5281/zenodo.20825765)
 
 ## Key Constants at a Glance
 

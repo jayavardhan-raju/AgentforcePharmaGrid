@@ -6,7 +6,7 @@
 [![Platform](https://img.shields.io/badge/platform-Salesforce-00A1E0.svg)](https://www.salesforce.com)
 [![API](https://img.shields.io/badge/API-v66.0-1798c1.svg)](https://developer.salesforce.com/docs/atlas.en-us.api.meta/api/)
 [![Agentforce](https://img.shields.io/badge/Agentforce-Grid-9B59B6.svg)](https://www.salesforce.com/agentforce/)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20283941.svg)](https://doi.org/10.5281/zenodo.20283941)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20825765.svg)](https://doi.org/10.5281/zenodo.20825765)
 
 ---
 
@@ -323,11 +323,11 @@ GitHub provides a **"Cite this repository"** button in the right sidebar that re
   year      = {2026},
   url       = {https://github.com/jayavardhan-raju/AgentforcePharmaGrid},
   version   = {1.0.0},
-  doi       = {10.5281/zenodo.20283941}
+  doi       = {10.5281/zenodo.20825765}
 }
 ```
 
-This project is archived on Zenodo at [10.5281/zenodo.20283941](https://doi.org/10.5281/zenodo.20283941) — the **Concept DOI** that always resolves to the latest release. See [CITING.md](CITING.md) for APA, IEEE, and Chicago formats.
+This project is archived on Zenodo at [10.5281/zenodo.20825765](https://doi.org/10.5281/zenodo.20825765) — the **Concept DOI** that always resolves to the latest release. See [CITING.md](CITING.md) for APA, IEEE, and Chicago formats.
 
 ---
 
